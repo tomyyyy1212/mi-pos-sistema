@@ -52,11 +52,24 @@ import {
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, signOut } from 'firebase/auth';
 
 // --- Configuración de Firebase ---
-const firebaseConfig = JSON.parse(__firebase_config || '{}');
+const firebaseConfig = {
+  apiKey: "AIzaSyAI9cFjrbq9_Sp1zt84A12_YaO2T4OQQQE",
+  authDomain: "negocio-51df2.firebaseapp.com",
+  databaseURL: "https://negocio-51df2-default-rtdb.firebaseio.com",
+  projectId: "negocio-51df2",
+  storageBucket: "negocio-51df2.firebasestorage.app",
+  messagingSenderId: "394431118056",
+  appId: "1:394431118056:web:b383489e2fc49951f5e75d",
+  measurementId: "G-S392P9NCXH"
+};
+
+// Inicializar Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+// Definimos un ID fijo para guardar los datos siempre en el mismo lugar
+const appId = 'mi-negocio-v1';
 
 // --- Tipos de Datos ---
 interface Category {
@@ -1265,3 +1278,4 @@ function NavButton({ icon, label, active, onClick }: any) {
         </button>
     )
 }
+
