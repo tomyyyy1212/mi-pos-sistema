@@ -11,28 +11,31 @@ import {
   Save, 
   Search, 
   Menu, 
-  X,
-  ChevronRight,
-  ArrowDownCircle,
-  ArrowUpCircle,
-  LogOut,
-  Truck,
-  History,
-  Receipt,
-  Eye,
-  UserPlus,
-  Calendar,
-  Filter,
-  Tag,
-  Briefcase,
-  ChevronLeft,
-  BarChart3,
-  Award,
-  PieChart,
-  Clock,
+  X, 
+  ChevronRight, 
+  ArrowDownCircle, 
+  ArrowUpCircle, 
+  LogOut, 
+  Truck, 
+  History, 
+  Receipt, 
+  Eye, 
+  UserPlus, 
+  Calendar, 
+  Filter, 
+  Tag, 
+  Briefcase, 
+  ChevronLeft, 
+  BarChart3, 
+  Award, 
+  PieChart, 
+  Clock, 
   AlertCircle
 } from 'lucide-react';
+
+// Importamos las funciones de Firebase necesarias
 import { initializeApp } from 'firebase/app';
+import { getAnalytics } from "firebase/analytics"; // Agregado según tu config
 import { 
   getFirestore, 
   collection, 
@@ -42,16 +45,16 @@ import {
   onSnapshot, 
   query, 
   orderBy, 
-  Timestamp,
-  deleteDoc,
-  writeBatch,
-  getDocs,
-  where,
+  Timestamp, 
+  deleteDoc, 
+  writeBatch, 
+  getDocs, 
+  where, 
   limit
 } from 'firebase/firestore';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, signOut } from 'firebase/auth';
 
-// --- Configuración de Firebase ---
+// --- TU CONFIGURACIÓN DE FIREBASE ---
 const firebaseConfig = {
   apiKey: "AIzaSyAI9cFjrbq9_Sp1zt84A12_YaO2T4OQQQE",
   authDomain: "negocio-51df2.firebaseapp.com",
@@ -63,13 +66,14 @@ const firebaseConfig = {
   measurementId: "G-S392P9NCXH"
 };
 
-// Inicializar Firebase
+// Inicialización de Firebase
 const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app); // Inicializamos Analytics
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Definimos un ID fijo para guardar los datos siempre en el mismo lugar
-const appId = 'mi-negocio-v1';
+// ID Fijo para producción (así tus datos siempre van a la misma carpeta en la DB)
+const appId = 'negocio-produccion'; 
 
 // --- Tipos de Datos ---
 interface Category {
@@ -133,26 +137,25 @@ interface Transaction {
 // --- Componente Principal ---
 export default function PosApp() {
   const [user, setUser] = useState<any>(null);
-  // CAMBIO: 'reports' es ahora la vista por defecto
   const [view, setView] = useState<'pos' | 'inventory' | 'clients' | 'reports' | 'purchases' | 'receipts'>('reports');
-  
+   
   // Data Collections
   const [products, setProducts] = useState<Product[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  
+   
   // Cart & UI State
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedClient, setSelectedClient] = useState<string>('');
   const [selectedSupplier, setSelectedSupplier] = useState<string>('');
-  
+   
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [processingMsg, setProcessingMsg] = useState('');
 
-  // Estado de Alerta Personalizada (Reemplaza window.alert)
+  // Estado de Alerta Personalizada
   const [alertState, setAlertState] = useState<{ show: boolean, title: string, message: string, type?: 'error' | 'success' }>({ show: false, title: '', message: '' });
 
   // Modales
@@ -160,11 +163,11 @@ export default function PosApp() {
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
   const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
-  
+   
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [receiptDetails, setReceiptDetails] = useState<Transaction | null>(null);
   const [historyProduct, setHistoryProduct] = useState<Product | null>(null);
-  
+   
   const [showPurchaseHistory, setShowPurchaseHistory] = useState(false);
 
   // Filtros Recibos
@@ -193,11 +196,11 @@ export default function PosApp() {
   // --- Autenticación ---
   useEffect(() => {
     const initAuth = async () => {
-      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-        await signInWithCustomToken(auth, __initial_auth_token);
-      } else {
-        await signInAnonymously(auth);
-      }
+      // Intentamos autenticación anónima por defecto para simplificar
+      await signInAnonymously(auth).catch((error) => {
+          console.error("Error en autenticación anónima:", error);
+          // Si falla, asegurate de habilitar "Anonymous" en Firebase Console -> Authentication
+      });
     };
     initAuth();
     const unsubscribe = onAuthStateChanged(auth, (u) => {
@@ -211,6 +214,7 @@ export default function PosApp() {
   useEffect(() => {
     if (!user) return;
 
+    // Usamos el appId fijo 'negocio-produccion'
     const productsRef = collection(db, 'artifacts', appId, 'public', 'data', 'products');
     const clientsRef = collection(db, 'artifacts', appId, 'public', 'data', 'clients');
     const categoriesRef = collection(db, 'artifacts', appId, 'public', 'data', 'categories');
@@ -234,6 +238,18 @@ export default function PosApp() {
   const triggerAlert = (title: string, message: string, type: 'error' | 'success' = 'error') => {
     setAlertState({ show: true, title, message, type });
   };
+
+  // --- Helpers CRUD (Delete) ---
+  const handleDeleteProduct = async (productId: string) => {
+      if(window.confirm("¿Estás seguro de eliminar este producto?")) {
+          try {
+            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'products', productId));
+            triggerAlert("Eliminado", "Producto eliminado correctamente", "success");
+          } catch (e) {
+             triggerAlert("Error", "No se pudo eliminar el producto");
+          }
+      }
+  }
 
   // --- Lógica del Carrito ---
   const addToCart = (product: Product) => {
@@ -299,7 +315,7 @@ export default function PosApp() {
         triggerAlert("Carrito Vacío", "Agrega productos antes de continuar.");
         return;
     }
-    
+     
     const type = view === 'purchases' ? 'purchase' : 'sale';
 
     // 1. Validaciones de Venta
@@ -333,7 +349,7 @@ export default function PosApp() {
 
       for (const item of cart) {
         const productRef = doc(db, 'artifacts', appId, 'public', 'data', 'products', item.id);
-        
+         
         if (type === 'purchase') {
           const batchRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'inventory_batches'));
           const newBatch: InventoryBatch = {
@@ -344,7 +360,7 @@ export default function PosApp() {
             date: Timestamp.now()
           };
           batch.set(batchRef, newBatch);
-          
+           
           const currentProd = products.find(p => p.id === item.id);
           if (currentProd) {
             batch.update(productRef, { stock: currentProd.stock + item.qty });
@@ -359,7 +375,7 @@ export default function PosApp() {
           const batchesRef = collection(db, 'artifacts', appId, 'public', 'data', 'inventory_batches');
           const q = query(batchesRef, where('productId', '==', item.id));
           const snapshot = await getDocs(q);
-          
+           
           const availableBatches = snapshot.docs
             .map(d => ({...d.data(), ref: d.ref} as InventoryBatch & { ref: any }))
             .filter(b => b.quantity > 0)
@@ -370,15 +386,15 @@ export default function PosApp() {
 
             const take = Math.min(invBatch.quantity, remainingQtyToSell);
             const costForThisPart = take * invBatch.cost;
-            
+             
             itemTotalCost += costForThisPart;
-            
+             
             currentItemFifoDetails.push({
                 cost: invBatch.cost,
                 qty: take,
                 date: invBatch.date
             });
-            
+             
             batch.update(invBatch.ref, { quantity: invBatch.quantity - take });
             remainingQtyToSell -= take;
           }
@@ -415,7 +431,7 @@ export default function PosApp() {
       await batch.commit();
       clearCart();
       triggerAlert("Éxito", "Transacción registrada correctamente.", "success");
-      
+       
     } catch (error) {
       console.error("Error transaction:", error);
       triggerAlert("Error", "Ocurrió un error al procesar la transacción. Revisa la consola.");
@@ -489,7 +505,7 @@ export default function PosApp() {
   const getFilteredTransactions = (type: 'sale' | 'purchase', start: string, end: string, entityId: string, productSearch: string) => {
     let filtered = transactions.filter(t => t.type === type);
     if (entityId) filtered = filtered.filter(t => t.clientId === entityId);
-    
+     
     if (start) {
         const s = new Date(`${start}T00:00:00`);
         filtered = filtered.filter(t => {
@@ -504,7 +520,7 @@ export default function PosApp() {
             return d <= e;
         });
     }
-    
+     
     if (productSearch) {
         const lower = productSearch.toLowerCase();
         filtered = filtered.filter(t => t.items.some(i => i.name.toLowerCase().includes(lower)));
@@ -530,7 +546,7 @@ export default function PosApp() {
   const setQuickDate = (type: 'today' | 'yesterday' | 'week' | 'month') => {
       const now = new Date();
       const formatDate = (d: Date) => d.toLocaleDateString('en-CA');
-      
+       
       let start = new Date();
       let end = new Date();
 
@@ -558,13 +574,13 @@ export default function PosApp() {
     const reportTrans = transactions.filter(t => {
         if (t.type !== 'sale') return false;
         if (!t.date) return false;
-        
+         
         const d = t.date.toDate ? t.date.toDate() : new Date(t.date.seconds * 1000);
         return d >= start && d <= end;
     });
 
     const totalSales = reportTrans.reduce((acc, t) => acc + t.total, 0);
-    
+     
     const totalCost = reportTrans.reduce((acc, t) => {
         let cost = t.totalCost;
         if (cost === undefined) {
@@ -581,7 +597,7 @@ export default function PosApp() {
     sortedTransForTimeline.forEach(t => {
         const d = t.date.toDate ? t.date.toDate() : new Date(t.date.seconds * 1000);
         const dateKey = d.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' });
-        
+         
         const existing = timelineData.find(d => d.date === dateKey);
         if(existing) existing.total += t.total;
         else timelineData.push({ date: dateKey, total: t.total });
@@ -622,7 +638,7 @@ export default function PosApp() {
 
   return (
     <div className="flex flex-col h-screen bg-slate-50 text-slate-800 font-sans overflow-hidden">
-      
+       
       {/* Alerta Visual Personalizada */}
       {alertState.show && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
@@ -652,7 +668,7 @@ export default function PosApp() {
           {view === 'purchases' && <Truck className="w-5 h-5" />}
           {view === 'receipts' && <Receipt className="w-5 h-5" />}
           {view === 'reports' && <LayoutDashboard className="w-5 h-5" />}
-          
+           
           {view === 'pos' ? 'Punto de Venta' : 
            view === 'inventory' ? 'Inventario' :
            view === 'clients' ? 'Clientes' :
@@ -739,14 +755,14 @@ export default function PosApp() {
                     </h3>
                     <button onClick={clearCart} className="text-red-500 text-xs font-medium px-2 py-1 hover:bg-red-50 rounded">Limpiar</button>
                   </div>
-                  
+                   
                   {cart.map(item => (
                     <div key={item.id} className="flex flex-col mb-3 pb-3 border-b border-slate-50 last:border-0">
                       <div className="flex justify-between items-start mb-2">
                         <span className="text-sm font-medium flex-1 text-slate-800">{item.name}</span>
                         <button onClick={() => removeFromCart(item.id)} className="text-red-400 ml-2"><X className="w-4 h-4" /></button>
                       </div>
-                      
+                       
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center bg-slate-100 rounded-lg">
                           <button onClick={() => updateQty(item.id, -1)} className="p-2 hover:bg-slate-200 rounded-l-lg text-slate-600"><Minus className="w-3 h-3" /></button>
@@ -812,12 +828,12 @@ export default function PosApp() {
                     <span className="text-slate-500 text-sm font-medium">Total {view === 'purchases' ? 'Costo' : 'a Cobrar'}</span>
                     <span className="text-3xl font-black text-slate-800 tracking-tight">${cartTotal.toFixed(0)}</span>
                   </div>
-                  
+                   
                   <button 
                     onClick={handleTransaction}
                     disabled={loading}
                     className={`w-full py-3.5 rounded-xl font-bold text-white shadow-lg flex justify-center items-center gap-2 active:scale-95 transition-transform
-                      ${view === 'purchases' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'}`}
+                      {view === 'purchases' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'}`}
                   >
                     {view === 'purchases' ? 'CONFIRMAR ABASTECIMIENTO' : 'PROCESAR VENTA'}
                   </button>
@@ -831,17 +847,17 @@ export default function PosApp() {
         {view === 'purchases' && showPurchaseHistory && (
             <div className="p-4">
                 <div className="flex justify-between items-center mb-4">
-                     <button onClick={() => setShowPurchaseHistory(false)} className="text-emerald-600 flex items-center gap-1 font-medium text-sm">
-                        <ChevronLeft className="w-4 h-4" /> Volver
+                      <button onClick={() => setShowPurchaseHistory(false)} className="text-emerald-600 flex items-center gap-1 font-medium text-sm">
+                         <ChevronLeft className="w-4 h-4" /> Volver
+                      </button>
+                      <button onClick={() => setShowPhFilters(!showPhFilters)} className={`p-2 rounded-lg ${showPhFilters ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                         <Filter className="w-5 h-5" />
                      </button>
-                     <button onClick={() => setShowPhFilters(!showPhFilters)} className={`p-2 rounded-lg ${showPhFilters ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                        <Filter className="w-5 h-5" />
-                    </button>
                 </div>
 
                 {showPhFilters && (
                     <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mb-4 space-y-3 animate-in slide-in-from-top duration-200">
-                         <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-2 gap-3">
                             <input type="date" className="w-full p-2 border rounded-lg text-sm" value={phStartDate} onChange={e => setPhStartDate(e.target.value)} />
                             <input type="date" className="w-full p-2 border rounded-lg text-sm" value={phEndDate} onChange={e => setPhEndDate(e.target.value)} />
                         </div>
@@ -898,7 +914,7 @@ export default function PosApp() {
                   <Tag className="w-5 h-5" />
                </button>
                <button onClick={() => { setEditingProduct(null); setIsProductModalOpen(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 text-sm font-bold shadow-lg shadow-blue-200">
-                 <Plus className="w-4 h-4" /> Nuevo
+                  <Plus className="w-4 h-4" /> Nuevo
                </button>
             </div>
 
@@ -983,10 +999,10 @@ export default function PosApp() {
         {/* VISTA: CLIENTES */}
         {view === 'clients' && ( <div className="p-4"><button onClick={() => setIsClientModalOpen(true)} className="w-full bg-blue-600 text-white p-3 rounded-xl mb-4 font-bold shadow-lg flex justify-center items-center gap-2"><UserPlus className="w-5 h-5" /> Crear Cliente</button><div className="space-y-3">{clients.map(c => (<div key={c.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center gap-4"><div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">{c.name.charAt(0)}</div><div><h3 className="font-bold text-slate-800">{c.name}</h3><div className="text-sm text-slate-500 mt-0.5 flex flex-col">{c.department && <span className="font-bold text-slate-700">Depto: {c.department}</span>}{c.phone && <span>{c.phone}</span>}{c.email && <span className="text-xs text-slate-400">{c.email}</span>}</div></div></div>))}</div></div> )}
         
-        {/* VISTA: REPORTES AVANZADOS (NUEVA) */}
+        {/* VISTA: REPORTES AVANZADOS */}
         {view === 'reports' && (
           <div className="p-4 space-y-5">
-            
+             
             {/* 1. Botones Rápidos de Fecha */}
             <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
                 <button onClick={() => setQuickDate('today')} className="px-3 py-1.5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold whitespace-nowrap">Hoy</button>
@@ -1068,7 +1084,7 @@ export default function PosApp() {
                             </div>
                             <div className="text-right">
                                 <div className="font-bold">${p.revenue.toLocaleString()}</div>
-                                <div className="text-[10px] text-slate-400">{p.qty} un. vendidas</div>
+                                <div className="text-xs text-slate-400">{p.qty} un. vendidas</div>
                             </div>
                         </div>
                     ))}
@@ -1093,7 +1109,7 @@ export default function PosApp() {
                             </div>
                             <div className="text-right">
                                 <div className="font-bold">${c.revenue.toLocaleString()}</div>
-                                <div className="text-[10px] text-slate-400">{c.count} compras</div>
+                                <div className="text-xs text-slate-400">{c.count} compras</div>
                             </div>
                         </div>
                     ))}
@@ -1228,7 +1244,7 @@ export default function PosApp() {
           </div>
         </div>
       )}
-      
+       
       {/* Historial Producto */}
       {historyProduct && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm">
@@ -1278,4 +1294,3 @@ function NavButton({ icon, label, active, onClick }: any) {
         </button>
     )
 }
-
