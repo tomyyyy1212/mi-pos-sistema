@@ -136,6 +136,11 @@ interface Transaction {
 
 // --- Componente Principal ---
 export default function PosApp() {
+
+  const formatMoney = (amount: number) => {
+    return amount.toLocaleString('es-CL');
+  };
+  
   const [user, setUser] = useState<any>(null);
   const [view, setView] = useState<'pos' | 'inventory' | 'clients' | 'reports' | 'purchases' | 'receipts'>('reports');
    
@@ -1294,3 +1299,4 @@ function NavButton({ icon, label, active, onClick }: any) {
         </button>
     )
 }
+
