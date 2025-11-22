@@ -138,8 +138,11 @@ interface Transaction {
 export default function PosApp() {
 
   const formatMoney = (amount: number) => {
-    return amount.toLocaleString('es-CL');
-  };
+  return amount.toLocaleString('es-CL', {
+    minimumFractionDigits: 0, // Mínimo 0 decimales
+    maximumFractionDigits: 0  // Máximo 0 decimales (Esto reemplaza al toFixed(0))
+  });
+};
   
   const [user, setUser] = useState<any>(null);
   const [view, setView] = useState<'pos' | 'inventory' | 'clients' | 'reports' | 'purchases' | 'receipts'>('reports');
@@ -739,7 +742,7 @@ export default function PosApp() {
                   <div className="flex justify-between items-end mt-2">
                     <div className="flex flex-col">
                         <span className="text-[10px] text-slate-400 uppercase">Precio</span>
-                        <span className="font-bold text-blue-600 text-lg">${product.price}</span>
+                        <span className="font-bold 
                     </div>
                     <div className={`text-xs px-2 py-1 rounded-lg font-bold flex flex-col items-center ${product.stock < 5 ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
                       <span>{product.stock}</span>
@@ -831,7 +834,7 @@ export default function PosApp() {
 
                   <div className="flex justify-between items-center mb-4">
                     <span className="text-slate-500 text-sm font-medium">Total {view === 'purchases' ? 'Costo' : 'a Cobrar'}</span>
-                    <span className="text-3xl font-black text-slate-800 tracking-tight">${cartTotal.toFixed(0)}</span>
+                    <span className="text-3xl font-black text-slate-800 tracking-tight">${formatMoney(cartTotal)}</span>
                   </div>
                    
                   <button 
@@ -1032,15 +1035,15 @@ export default function PosApp() {
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-blue-600 text-white p-4 rounded-2xl shadow-lg shadow-blue-200">
                 <div className="text-blue-200 text-xs font-bold mb-1 uppercase tracking-wider">Ventas Totales</div>
-                <div className="text-2xl font-black">${reportData.totalSales.toLocaleString()}</div>
+                <div className="text-2xl font-black">${formatMoney(reportData.totalSales)}</div>
               </div>
               <div className="bg-indigo-600 text-white p-4 rounded-2xl shadow-lg shadow-indigo-200">
                 <div className="text-indigo-200 text-xs font-bold mb-1 uppercase tracking-wider">Costos (FIFO)</div>
-                <div className="text-2xl font-black">${reportData.totalCost.toLocaleString()}</div>
+                <div className="text-2xl font-black">${formatMoney(reportData.totalCost)}</div>
               </div>
               <div className="bg-emerald-600 text-white p-4 rounded-2xl shadow-lg shadow-emerald-200">
                 <div className="text-emerald-200 text-xs font-bold mb-1 uppercase tracking-wider">Margen $</div>
-                <div className="text-2xl font-black">${reportData.margin.toLocaleString()}</div>
+                <div className="text-2xl font-black">${formatMoney(reportData.margin)}</div>
               </div>
               <div className="bg-white text-emerald-600 p-4 rounded-2xl shadow-lg border border-emerald-100">
                 <div className="text-emerald-400 text-xs font-bold mb-1 uppercase tracking-wider">Margen %</div>
@@ -1065,7 +1068,7 @@ export default function PosApp() {
                                     style={{ width: `${(d.total / Math.max(...reportData.timelineData.map(x => x.total))) * 100}%` }}
                                 ></div>
                             </div>
-                            <span className="w-16 text-right font-bold text-slate-700">${d.total.toLocaleString()}</span>
+                            <span className="w-16 text-right font-bold text-slate-700">${formatMoney(d.total)}</span>
                         </div>
                     ))}
                 </div>
@@ -1088,7 +1091,7 @@ export default function PosApp() {
                                 <div className="font-medium text-slate-700 line-clamp-1">{p.name}</div>
                             </div>
                             <div className="text-right">
-                                <div className="font-bold">${p.revenue.toLocaleString()}</div>
+                                <div className="font-bold">${formatMoney(p.revenue)}</div>
                                 <div className="text-xs text-slate-400">{p.qty} un. vendidas</div>
                             </div>
                         </div>
@@ -1299,4 +1302,5 @@ function NavButton({ icon, label, active, onClick }: any) {
         </button>
     )
 }
+
 
