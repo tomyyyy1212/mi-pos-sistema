@@ -740,7 +740,7 @@ export default function PosApp() {
                   )}
                   <span className="font-medium line-clamp-2 text-sm leading-tight text-slate-700">{product.name}</span>
                   <div className="flex justify-between items-end mt-2">
-                    <<div className="flex flex-col">
+                    <div className="flex flex-col">
                     <span className="text-[10px] text-slate-400 uppercase">Precio</span>
                     <span className="font-bold text-blue-600 text-lg">${formatMoney(product.price)}</span>
                     </div>
@@ -1302,6 +1302,7 @@ function NavButton({ icon, label, active, onClick }: any) {
         </button>
     )
 }
+
 
 
 
