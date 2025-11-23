@@ -36,7 +36,8 @@ import {
   Share2,
   MessageCircle,
   Smartphone,
-  AlertTriangle
+  AlertTriangle,
+  BookOpen // Icono para catálogo
 } from 'lucide-react';
 
 // Importamos las funciones de Firebase necesarias
@@ -179,6 +180,7 @@ export default function PosApp() {
   const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
   const [showPreTicket, setShowPreTicket] = useState(false); // Modal de Resumen/Pre-ticket (Ventas)
   const [showStockAlertModal, setShowStockAlertModal] = useState(false); // Modal de Reporte de Stock (Dashboard)
+  const [showCatalogModal, setShowCatalogModal] = useState(false); // NUEVO: Modal Catálogo
     
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [receiptDetails, setReceiptDetails] = useState<Transaction | null>(null);
@@ -289,14 +291,13 @@ export default function PosApp() {
       return { color: 'bg-green-100 text-green-700 border border-green-200', label: 'BIEN' };
   };
 
-  // --- Helpers WhatsApp de Stock ---
+  // --- Helpers WhatsApp de Stock (Interno) ---
   const handleSendStockReport = (phoneNumber: string) => {
       if (!phoneNumber) {
           triggerAlert("Falta número", "Ingresa un número de teléfono primero.");
           return;
       }
       
-      // Filtrar productos críticos (menos de 4)
       const lowStockItems = products.filter(p => p.stock < 4);
       
       if (lowStockItems.length === 0) {
@@ -322,6 +323,40 @@ export default function PosApp() {
 
       const url = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
       window.open(url, '_blank');
+  };
+
+  // --- Helpers WhatsApp de Catálogo (Cliente) ---
+  const handleSendCatalog = (categoryId: string) => {
+      let itemsToSend = products;
+      let catName = "CATÁLOGO COMPLETO";
+
+      if (categoryId !== 'ALL') {
+          itemsToSend = products.filter(p => p.category === categoryId);
+          const cat = categories.find(c => c.id === categoryId);
+          if (cat) catName = cat.name.toUpperCase();
+      }
+
+      // Ordenar alfabéticamente
+      itemsToSend.sort((a,b) => a.name.localeCompare(b.name));
+
+      if (itemsToSend.length === 0) {
+          triggerAlert("Sin productos", "No hay productos en esta categoría para enviar.");
+          return;
+      }
+
+      let message = `🛍️ *${catName}* 🛍️\n\n`;
+      itemsToSend.forEach(p => {
+          // Solo enviamos productos con stock > 0 opcionalmente, pero usualmente catálogo es todo.
+          // Si quieres filtrar agotados descomenta: if (p.stock <= 0) return;
+          message += `▪️ ${p.name}\n   💲${formatMoney(p.price)}\n\n`;
+      });
+      
+      message += `_Precios sujetos a cambios._`;
+
+      // Abrir WhatsApp sin número predefinido para que el usuario elija el contacto
+      const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
+      window.open(url, '_blank');
+      setShowCatalogModal(false);
   };
 
 
@@ -399,7 +434,7 @@ export default function PosApp() {
   // --- WhatsApp Helpers (Venta) ---
   const handleWhatsAppShare = () => {
      let clientPhone = '';
-     let clientName = 'Vecin@';
+     let clientName = 'Estimado/a';
 
      if (selectedClient && selectedClient !== 'Consumidor Final') {
          const c = clients.find(cl => cl.id === selectedClient);
@@ -410,7 +445,7 @@ export default function PosApp() {
      }
 
      const lines = cart.map(item => `- ${item.name} (${item.qty} x $${formatMoney(item.transactionPrice)}) = $${formatMoney(item.qty * item.transactionPrice)}`);
-     const message = `${clientName}, aquí está el resumen de su pedido:\n\n${lines.join('\n')}\n\n*TOTAL: $${formatMoney(cartTotal)}*`;
+     const message = `Hola ${clientName}, aquí está el resumen de tu pedido:\n\n${lines.join('\n')}\n\n*TOTAL: $${formatMoney(cartTotal)}*`;
      
      const encoded = encodeURIComponent(message);
      const url = `https://wa.me/${clientPhone}?text=${encoded}`;
@@ -1109,6 +1144,10 @@ export default function PosApp() {
                <button onClick={() => setIsCategoryModalOpen(true)} className="bg-white text-slate-600 px-3 py-2 rounded-xl border border-slate-200 shadow-sm">
                   <Tag className="w-5 h-5" />
                </button>
+               {/* BOTÓN NUEVO: ENVIAR CATÁLOGO */}
+               <button onClick={() => setShowCatalogModal(true)} className="bg-green-600 text-white px-3 py-2 rounded-xl shadow-sm hover:bg-green-700">
+                  <Share2 className="w-5 h-5" />
+               </button>
                <button onClick={() => { setEditingProduct(null); setIsProductModalOpen(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 text-sm font-bold shadow-lg shadow-blue-200">
                   <Plus className="w-4 h-4" /> Nuevo
                </button>
@@ -1491,6 +1530,40 @@ export default function PosApp() {
                      
                      <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-100 text-xs text-yellow-800">
                          <b>Nota:</b> Los números se guardan en este dispositivo para la próxima vez.
+                     </div>
+                 </div>
+             </div>
+         </div>
+      )}
+
+      {/* MODAL NUEVO: ENVIAR CATÁLOGO */}
+      {showCatalogModal && (
+         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+             <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+                 <div className="p-4 bg-green-600 text-white flex justify-between items-center">
+                     <h2 className="font-bold flex items-center gap-2"><BookOpen className="w-5 h-5" /> Enviar Catálogo</h2>
+                     <button onClick={() => setShowCatalogModal(false)} className="text-white/80 hover:text-white"><X className="w-5 h-5" /></button>
+                 </div>
+                 <div className="p-6 bg-white space-y-4">
+                     <p className="text-sm text-slate-600">
+                         Selecciona la categoría para generar el catálogo en WhatsApp (Nombre + Precio).
+                     </p>
+                     <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto">
+                         <button 
+                             onClick={() => handleSendCatalog('ALL')}
+                             className="w-full py-3 px-4 bg-slate-100 hover:bg-green-50 text-slate-800 font-bold rounded-xl text-left flex justify-between items-center"
+                         >
+                             Todo el Catálogo <ChevronRight className="w-4 h-4 text-slate-400" />
+                         </button>
+                         {categories.map(c => (
+                             <button 
+                                 key={c.id}
+                                 onClick={() => handleSendCatalog(c.id)}
+                                 className="w-full py-3 px-4 bg-white border border-slate-100 hover:bg-green-50 text-slate-700 font-medium rounded-xl text-left flex justify-between items-center"
+                             >
+                                 {c.name} <ChevronRight className="w-4 h-4 text-slate-400" />
+                             </button>
+                         ))}
                      </div>
                  </div>
              </div>
