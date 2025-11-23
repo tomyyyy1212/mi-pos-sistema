@@ -37,7 +37,7 @@ import {
   MessageCircle,
   Smartphone,
   AlertTriangle,
-  BookOpen // Icono para catálogo
+  BookOpen
 } from 'lucide-react';
 
 // Importamos las funciones de Firebase necesarias
@@ -336,23 +336,22 @@ export default function PosApp() {
           if (cat) catName = cat.name.toUpperCase();
       }
 
+      // 1. Filtrar solo productos con stock
+      itemsToSend = itemsToSend.filter(p => p.stock > 0);
+
       // Ordenar alfabéticamente
       itemsToSend.sort((a,b) => a.name.localeCompare(b.name));
 
       if (itemsToSend.length === 0) {
-          triggerAlert("Sin productos", "No hay productos en esta categoría para enviar.");
+          triggerAlert("Sin productos", "No hay productos con stock en esta categoría para enviar.");
           return;
       }
 
-      let message = `🛍️ *${catName}* 🛍️\n\n`;
+      let message = `*${catName}*\n\n`;
       itemsToSend.forEach(p => {
-          // Solo enviamos productos con stock > 0 opcionalmente, pero usualmente catálogo es todo.
-          // Si quieres filtrar agotados descomenta: if (p.stock <= 0) return;
-          message += `▪️ ${p.name}\n   💲${formatMoney(p.price)}\n\n`;
+          message += `* ${p.name} - $${formatMoney(p.price)}\n`;
       });
       
-      message += `_Precios sujetos a cambios._`;
-
       // Abrir WhatsApp sin número predefinido para que el usuario elija el contacto
       const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
       window.open(url, '_blank');
@@ -434,7 +433,7 @@ export default function PosApp() {
   // --- WhatsApp Helpers (Venta) ---
   const handleWhatsAppShare = () => {
      let clientPhone = '';
-     let clientName = 'Estimado/a';
+     let clientName = 'Vecin@';
 
      if (selectedClient && selectedClient !== 'Consumidor Final') {
          const c = clients.find(cl => cl.id === selectedClient);
@@ -445,7 +444,7 @@ export default function PosApp() {
      }
 
      const lines = cart.map(item => `- ${item.name} (${item.qty} x $${formatMoney(item.transactionPrice)}) = $${formatMoney(item.qty * item.transactionPrice)}`);
-     const message = `Hola ${clientName}, aquí está el resumen de tu pedido:\n\n${lines.join('\n')}\n\n*TOTAL: $${formatMoney(cartTotal)}*`;
+     const message = `aquí está el resumen de tu pedido:\n\n${lines.join('\n')}\n\n*TOTAL: $${formatMoney(cartTotal)}*`;
      
      const encoded = encodeURIComponent(message);
      const url = `https://wa.me/${clientPhone}?text=${encoded}`;
@@ -528,6 +527,8 @@ export default function PosApp() {
 
             const take = Math.min(invBatch.quantity, remainingQtyToSell);
             const costForThisPart = take * invBatch.cost;
+              
+            itemTotalCost += costForThisPart;
               
             itemTotalCost += costForThisPart;
               
@@ -911,14 +912,14 @@ export default function PosApp() {
 
             {/* 3. CARRITO (Fijo Absoluto abajo pero encima del Nav) */}
             {cart.length > 0 && (
-              <div className="absolute bottom-0 left-0 w-full z-20 flex flex-col max-h-[60vh]">
+              <div className="absolute bottom-0 left-0 w-full z-20 flex flex-col max-h-[70vh]">
                  {/* El 'bottom-0' aquí es relativo al 'main', pero como main ocupa h-screen menos header, y tenemos Nav fijo, 
                      necesitamos dar espacio al Nav. La mejor forma visual es un panel flotante. */}
                  
-                 <div className="bg-white rounded-t-3xl shadow-[0_-8px_30px_rgba(0,0,0,0.12)] border-t border-slate-100 flex flex-col">
+                 <div className="bg-white rounded-t-3xl shadow-[0_-8px_30px_rgba(0,0,0,0.12)] border-t border-slate-100 flex flex-col h-full">
                     
-                    {/* Lista de Items (Colapsable/Scrollable) */}
-                    <div className="p-4 overflow-y-auto max-h-[30vh] border-b border-slate-50">
+                    {/* Lista de Items (Colapsable/Scrollable) - Se expande según espacio */}
+                    <div className="flex-1 overflow-y-auto p-4 border-b border-slate-50">
                       <div className="flex justify-between items-center mb-2">
                         <h3 className="font-bold text-xs text-slate-400 uppercase tracking-wider">
                           {view === 'pos' ? 'Detalle Venta' : 'Entrada Stock'}
@@ -966,8 +967,8 @@ export default function PosApp() {
                       ))}
                     </div>
 
-                    {/* Panel de Acciones Compacto */}
-                    <div className="p-3 bg-slate-50 space-y-3 pb-[80px]"> {/* pb-[80px] para salvar el Nav inferior */}
+                    {/* Panel de Acciones Compacto - SHRINK-0 para que NUNCA se encoja */}
+                    <div className="shrink-0 p-3 bg-slate-50 space-y-3 pb-[80px]"> {/* pb-[80px] para salvar el Nav inferior */}
                       
                         {/* Selector Cliente Compacto */}
                         <div className="flex gap-2 items-center">
