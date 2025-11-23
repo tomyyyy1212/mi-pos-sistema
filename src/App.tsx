@@ -540,8 +540,8 @@ export default function PosApp() {
             const costForThisPart = take * invBatch.cost;
               
             itemTotalCost += costForThisPart;
-              
-            itemTotalCost += costForThisPart;
+            
+            // SE ELIMINÓ LA LÍNEA DUPLICADA AQUÍ: itemTotalCost += costForThisPart;
               
             currentItemFifoDetails.push({
                 cost: invBatch.cost,
