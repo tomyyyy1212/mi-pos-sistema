@@ -37,7 +37,9 @@ import {
   MessageCircle,
   Smartphone,
   AlertTriangle,
-  BookOpen
+  BookOpen,
+  CreditCard,
+  Banknote
 } from 'lucide-react';
 
 // Importamos las funciones de Firebase necesarias
@@ -138,6 +140,7 @@ interface Transaction {
   totalCost?: number;
   items: CartItem[];
   clientId?: string; 
+  paymentMethod?: 'Efectivo' | 'Transferencia'; // NUEVO CAMPO
   date: any;
 }
 
@@ -165,6 +168,7 @@ export default function PosApp() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedClient, setSelectedClient] = useState<string>('');
   const [selectedSupplier, setSelectedSupplier] = useState<string>('');
+  const [paymentMethod, setPaymentMethod] = useState<'Efectivo' | 'Transferencia' | ''>(''); // NUEVO ESTADO
     
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -178,9 +182,9 @@ export default function PosApp() {
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
   const [isSupplierModalOpen, setIsSupplierModalOpen] = useState(false);
-  const [showPreTicket, setShowPreTicket] = useState(false); // Modal de Resumen/Pre-ticket (Ventas)
-  const [showStockAlertModal, setShowStockAlertModal] = useState(false); // Modal de Reporte de Stock (Dashboard)
-  const [showCatalogModal, setShowCatalogModal] = useState(false); // NUEVO: Modal Catálogo
+  const [showPreTicket, setShowPreTicket] = useState(false); 
+  const [showStockAlertModal, setShowStockAlertModal] = useState(false); 
+  const [showCatalogModal, setShowCatalogModal] = useState(false); 
     
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [receiptDetails, setReceiptDetails] = useState<Transaction | null>(null);
@@ -424,6 +428,7 @@ export default function PosApp() {
     setSelectedClient('');
     setClientSearchTerm(''); 
     setSelectedSupplier('');
+    setPaymentMethod(''); // Limpiar medio de pago
   };
 
   const cartTotal = useMemo(() => {
@@ -432,23 +437,23 @@ export default function PosApp() {
 
   // --- WhatsApp Helpers (Venta) ---
   const handleWhatsAppShare = () => {
-     let clientPhone = '';
-     let clientName = 'Vecin@';
+      let clientPhone = '';
+      let clientName = 'Vecin@';
 
-     if (selectedClient && selectedClient !== 'Consumidor Final') {
-         const c = clients.find(cl => cl.id === selectedClient);
-         if (c) {
-             clientName = c.name;
-             if(c.phone) clientPhone = c.phone;
-         }
-     }
+      if (selectedClient && selectedClient !== 'Consumidor Final') {
+          const c = clients.find(cl => cl.id === selectedClient);
+          if (c) {
+              clientName = c.name;
+              if(c.phone) clientPhone = c.phone;
+          }
+      }
 
-     const lines = cart.map(item => `- ${item.name} (${item.qty} x $${formatMoney(item.transactionPrice)}) = $${formatMoney(item.qty * item.transactionPrice)}`);
-     const message = `aquí está el resumen de tu pedido:\n\n${lines.join('\n')}\n\n*TOTAL: $${formatMoney(cartTotal)}*`;
-     
-     const encoded = encodeURIComponent(message);
-     const url = `https://wa.me/${clientPhone}?text=${encoded}`;
-     window.open(url, '_blank');
+      const lines = cart.map(item => `- ${item.name} (${item.qty} x $${formatMoney(item.transactionPrice)}) = $${formatMoney(item.qty * item.transactionPrice)}`);
+      const message = `aquí está el resumen de tu pedido:\n\n${lines.join('\n')}\n\n*TOTAL: $${formatMoney(cartTotal)}*`;
+      
+      const encoded = encodeURIComponent(message);
+      const url = `https://wa.me/${clientPhone}?text=${encoded}`;
+      window.open(url, '_blank');
   };
 
 
@@ -464,6 +469,11 @@ export default function PosApp() {
     if (type === 'sale') {
         if (!selectedClient) {
             triggerAlert("Falta Cliente", "Es OBLIGATORIO seleccionar un cliente para realizar la venta.");
+            return;
+        }
+        // VALIDACIÓN DE PAGO
+        if (!paymentMethod) {
+            triggerAlert("Falta Medio de Pago", "Selecciona si es Efectivo o Transferencia.");
             return;
         }
     }
@@ -568,6 +578,7 @@ export default function PosApp() {
 
       if (type === 'sale') {
         transactionData.totalCost = totalTransactionCost;
+        transactionData.paymentMethod = paymentMethod; // GUARDAMOS EL MEDIO DE PAGO
       }
 
       batch.set(transRef, transactionData);
@@ -910,16 +921,15 @@ export default function PosApp() {
                 </div>
             </div>
 
-            {/* 3. CARRITO (Fijo Absoluto abajo pero encima del Nav) */}
+            {/* 3. CARRITO (Modificado: FIXED position y Max Height en lista) */}
             {cart.length > 0 && (
-              <div className="absolute bottom-0 left-0 w-full z-20 flex flex-col max-h-[70vh]">
-                 {/* El 'bottom-0' aquí es relativo al 'main', pero como main ocupa h-screen menos header, y tenemos Nav fijo, 
-                     necesitamos dar espacio al Nav. La mejor forma visual es un panel flotante. */}
-                 
-                 <div className="bg-white rounded-t-3xl shadow-[0_-8px_30px_rgba(0,0,0,0.12)] border-t border-slate-100 flex flex-col h-full">
+              <div className="fixed bottom-[76px] left-0 w-full z-20 flex flex-col shadow-[0_-8px_30px_rgba(0,0,0,0.15)] animate-in slide-in-from-bottom duration-300">
+                  {/* Se usa bottom-[76px] aprox para que quede justo encima del menú inferior */}
+                  
+                  <div className="bg-white rounded-t-3xl border-t border-slate-100 flex flex-col">
                     
-                    {/* Lista de Items (Colapsable/Scrollable) - Se expande según espacio */}
-                    <div className="flex-1 overflow-y-auto p-4 border-b border-slate-50">
+                    {/* Lista de Items (LIMITADA A 2 ITEMS VISUALES) */}
+                    <div className="max-h-48 overflow-y-auto p-4 border-b border-slate-50">
                       <div className="flex justify-between items-center mb-2">
                         <h3 className="font-bold text-xs text-slate-400 uppercase tracking-wider">
                           {view === 'pos' ? 'Detalle Venta' : 'Entrada Stock'}
@@ -948,7 +958,7 @@ export default function PosApp() {
                                 {/* Lógica Visual: Si es compra, input costo a la derecha. Si es venta, precio. */}
                                 <div className="flex items-center gap-1">
                                     <span className="text-[10px] text-slate-400 uppercase">
-                                        {view === 'pos' ? 'Precio' : 'Costo'}
+                                            {view === 'pos' ? 'Precio' : 'Costo'}
                                     </span>
                                     {view === 'purchases' ? (
                                         <input 
@@ -967,13 +977,14 @@ export default function PosApp() {
                       ))}
                     </div>
 
-                    {/* Panel de Acciones Compacto - SHRINK-0 para que NUNCA se encoja */}
-                    <div className="shrink-0 p-3 bg-slate-50 space-y-3 pb-[80px]"> {/* pb-[80px] para salvar el Nav inferior */}
+                    {/* Panel de Acciones Compacto */}
+                    <div className="shrink-0 p-3 bg-slate-50 space-y-3"> 
                       
-                        {/* Selector Cliente Compacto */}
+                        {/* FILA 1: CLIENTE + MEDIO DE PAGO */}
                         <div className="flex gap-2 items-center">
                             {view === 'pos' ? (
                                 <>
+                                    {/* SELECTOR DE CLIENTE (Ocupa el espacio restante) */}
                                     <div className="flex-1 relative" ref={clientInputRef}>
                                         <div className="relative">
                                             <input
@@ -996,7 +1007,7 @@ export default function PosApp() {
                                             )}
                                         </div>
                                         
-                                        {/* Lista Sugerencias */}
+                                        {/* Lista Sugerencias Cliente */}
                                         {showClientOptions && (
                                             <div className="absolute bottom-full mb-1 left-0 w-full bg-white border border-slate-200 rounded-xl shadow-xl max-h-40 overflow-y-auto z-50">
                                                 <div 
@@ -1026,8 +1037,21 @@ export default function PosApp() {
                                             </div>
                                         )}
                                     </div>
+
+                                    {/* SELECTOR MEDIO PAGO (Al lado del cliente) */}
+                                    <select 
+                                        value={paymentMethod} 
+                                        onChange={(e) => setPaymentMethod(e.target.value as any)}
+                                        className={`h-10 text-sm border rounded-xl px-2 outline-none font-medium w-32 ${!paymentMethod ? 'border-red-300 text-slate-500 bg-red-50' : 'border-slate-200 text-slate-800 bg-white'}`}
+                                    >
+                                        <option value="" disabled>Medio Pago</option>
+                                        <option value="Efectivo">Efectivo</option>
+                                        <option value="Transferencia">Transferencia</option>
+                                    </select>
+
+                                    {/* Botón Nuevo Cliente */}
                                     <button onClick={() => setIsClientModalOpen(true)} className="bg-white border border-slate-200 text-blue-600 w-10 h-10 rounded-xl flex items-center justify-center shrink-0">
-                                        <UserPlus className="w-5 h-5" />
+                                            <UserPlus className="w-5 h-5" />
                                     </button>
                                 </>
                             ) : (
@@ -1059,7 +1083,10 @@ export default function PosApp() {
                                 onClick={handleTransaction}
                                 disabled={loading}
                                 className={`flex-1 h-12 rounded-xl font-bold text-white shadow-lg flex justify-between px-6 items-center active:scale-95 transition-transform
-                                ${view === 'purchases' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'}`}
+                                ${view === 'purchases' 
+                                    ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200' 
+                                    : (!paymentMethod ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200')
+                                }`}
                             >
                                 <span>{view === 'purchases' ? 'Confirmar' : 'Cobrar'}</span>
                                 <span className="text-xl">${formatMoney(cartTotal)}</span>
@@ -1243,7 +1270,15 @@ export default function PosApp() {
                                             <span className="font-medium">{getClientName(t.clientId)}</span>
                                         </div>
                                     </div>
-                                    <div className={`px-2 py-1 rounded text-xs font-bold border ${marginPercent > 30 ? 'bg-green-50 text-green-700 border-green-100' : 'bg-yellow-50 text-yellow-700 border-yellow-100'}`}>Mg: {marginPercent.toFixed(0)}%</div>
+                                    <div className="flex flex-col items-end gap-1">
+                                         <div className={`px-2 py-1 rounded text-xs font-bold border ${marginPercent > 30 ? 'bg-green-50 text-green-700 border-green-100' : 'bg-yellow-50 text-yellow-700 border-yellow-100'}`}>Mg: {marginPercent.toFixed(0)}%</div>
+                                         {t.paymentMethod && (
+                                             <div className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1">
+                                                 {t.paymentMethod === 'Efectivo' ? <Banknote className="w-3 h-3"/> : <CreditCard className="w-3 h-3"/>}
+                                                 {t.paymentMethod}
+                                             </div>
+                                         )}
+                                    </div>
                                 </div>
                                 <div className="flex justify-between items-center pt-2 border-t border-slate-50 mt-2">
                                     <div className="text-xs text-slate-400">{new Date(t.date?.seconds * 1000).toLocaleDateString()} • {t.items.length} items</div>
@@ -1409,6 +1444,11 @@ export default function PosApp() {
                                  {receiptDetails.type === 'sale' ? getClientName(receiptDetails.clientId) : getSupplierName(receiptDetails.clientId)}
                              </span>
                         </div>
+                        {receiptDetails.paymentMethod && (
+                             <div className="text-xs text-slate-500 flex items-center gap-1 mt-1">
+                                Pago: <span className="font-bold text-slate-700">{receiptDetails.paymentMethod}</span>
+                             </div>
+                        )}
                     </div>
                     <button onClick={() => setReceiptDetails(null)} className="bg-white p-2 rounded-full shadow-sm text-slate-500"><X className="w-5 h-5" /></button>
                 </div>
