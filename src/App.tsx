@@ -140,7 +140,7 @@ interface Transaction {
   totalCost?: number;
   items: CartItem[];
   clientId?: string; 
-  paymentMethod?: 'Efectivo' | 'Transferencia'; // NUEVO CAMPO
+  paymentMethod?: 'Efectivo' | 'Transferencia'; 
   date: any;
 }
 
@@ -168,7 +168,7 @@ export default function PosApp() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedClient, setSelectedClient] = useState<string>('');
   const [selectedSupplier, setSelectedSupplier] = useState<string>('');
-  const [paymentMethod, setPaymentMethod] = useState<'Efectivo' | 'Transferencia' | ''>(''); // NUEVO ESTADO
+  const [paymentMethod, setPaymentMethod] = useState<'Efectivo' | 'Transferencia' | ''>(''); 
     
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -187,6 +187,7 @@ export default function PosApp() {
   const [showCatalogModal, setShowCatalogModal] = useState(false); 
     
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [productPriceInput, setProductPriceInput] = useState(''); // NUEVO ESTADO PARA INPUT PRECIO
   const [receiptDetails, setReceiptDetails] = useState<Transaction | null>(null);
   const [historyProduct, setHistoryProduct] = useState<Product | null>(null);
     
@@ -605,9 +606,14 @@ export default function PosApp() {
   const handleSaveProduct = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+    
+    // Limpieza del precio (eliminar $ y puntos)
+    const rawPrice = formData.get('price') as string;
+    const priceNumber = parseInt(rawPrice.replace(/\D/g, ''), 10) || 0;
+
     const productData = {
       name: formData.get('name') as string,
-      price: Number(formData.get('price')), 
+      price: priceNumber, // Guardamos el número limpio
       category: formData.get('category') as string,
     };
     try {
@@ -616,7 +622,9 @@ export default function PosApp() {
       } else {
         await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'products'), { ...productData, stock: 0 });
       }
-      setIsProductModalOpen(false); setEditingProduct(null);
+      setIsProductModalOpen(false); 
+      setEditingProduct(null);
+      setProductPriceInput(''); // Reset input
     } catch (error) { console.error(error); }
   };
 
@@ -873,8 +881,8 @@ export default function PosApp() {
                </div>
             )}
 
-            {/* 1. BUSCADOR (Statico arriba) */}
-            <div className="p-4 bg-slate-50 z-10 shrink-0 shadow-sm border-b border-slate-200">
+            {/* 1. BUSCADOR + FILTROS (Sticky arriba) */}
+            <div className="p-4 bg-slate-50 z-10 shrink-0 shadow-sm border-b border-slate-200 space-y-3">
               <div className="relative">
                 <Search className="absolute left-3 top-3 text-slate-400 w-5 h-5" />
                 <input 
@@ -884,6 +892,25 @@ export default function PosApp() {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
+              </div>
+
+              {/* FILTRO DE CATEGORIAS (Visible también en Ventas) */}
+              <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+                  <button 
+                      onClick={() => setSelectedCategoryFilter('ALL')}
+                      className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors border ${selectedCategoryFilter === 'ALL' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200'}`}
+                  >
+                      Todos
+                  </button>
+                  {categories.map(c => (
+                      <button 
+                          key={c.id}
+                          onClick={() => setSelectedCategoryFilter(c.id)}
+                          className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors border ${selectedCategoryFilter === c.id ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200'}`}
+                      >
+                          {c.name}
+                      </button>
+                  ))}
               </div>
             </div>
 
@@ -962,14 +989,19 @@ export default function PosApp() {
                                     </span>
                                     {view === 'purchases' ? (
                                         <input 
-                                            type="number" 
+                                            type="text" 
                                             className="w-20 p-1 text-right border border-emerald-300 rounded text-sm font-bold text-emerald-700 bg-emerald-50 focus:ring-2 focus:ring-emerald-500 outline-none"
-                                            value={item.transactionPrice === 0 ? '' : item.transactionPrice}
-                                            placeholder="0"
-                                            onChange={(e) => updateTransactionPrice(item.id, parseFloat(e.target.value) || 0)}
+                                            value={item.transactionPrice === 0 ? '' : '$' + formatMoney(item.transactionPrice)}
+                                            placeholder="$0"
+                                            onChange={(e) => {
+                                                // Eliminar todo lo que no sea dígito para obtener el número puro
+                                                const rawValue = e.target.value.replace(/\D/g, '');
+                                                const numberValue = parseInt(rawValue, 10) || 0;
+                                                updateTransactionPrice(item.id, numberValue);
+                                            }}
                                         />
                                     ) : (
-                                        <span className="font-bold text-slate-700 min-w-[3rem] text-right">${item.transactionPrice}</span>
+                                        <span className="font-bold text-slate-700 min-w-[3rem] text-right">${formatMoney(item.transactionPrice)}</span>
                                     )}
                                 </div>
                              </div>
@@ -1131,7 +1163,7 @@ export default function PosApp() {
                         <div key={t.id} onClick={() => setReceiptDetails(t)} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 active:bg-slate-50 cursor-pointer">
                             <div className="flex justify-between items-start mb-2">
                                 <div>
-                                    <div className="font-bold text-slate-800 text-lg">${t.total}</div>
+                                    <div className="font-bold text-slate-800 text-lg">${formatMoney(t.total)}</div>
                                     <div className="flex items-center gap-1 text-xs text-slate-500 mt-0.5">
                                         <Briefcase className="w-3 h-3" />
                                         <span className="font-medium">{getSupplierName(t.clientId)}</span>
@@ -1176,7 +1208,7 @@ export default function PosApp() {
                <button onClick={() => setShowCatalogModal(true)} className="bg-green-600 text-white px-3 py-2 rounded-xl shadow-sm hover:bg-green-700">
                   <Share2 className="w-5 h-5" />
                </button>
-               <button onClick={() => { setEditingProduct(null); setIsProductModalOpen(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 text-sm font-bold shadow-lg shadow-blue-200">
+               <button onClick={() => { setEditingProduct(null); setProductPriceInput(''); setIsProductModalOpen(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 text-sm font-bold shadow-lg shadow-blue-200">
                   <Plus className="w-4 h-4" /> Nuevo
                </button>
             </div>
@@ -1210,7 +1242,7 @@ export default function PosApp() {
                             <h3 className="font-bold text-slate-800">{p.name}</h3>
                             <p className="text-xs text-slate-500 uppercase mb-2">{categories.find(c => c.id === p.category)?.name || p.category}</p>
                             <div className="inline-flex items-center bg-slate-100 px-2 py-1 rounded-lg text-xs font-medium text-slate-600">
-                                Venta: <span className="text-slate-900 font-bold ml-1">${p.price}</span>
+                                Venta: <span className="text-slate-900 font-bold ml-1">${formatMoney(p.price)}</span>
                             </div>
                         </div>
                         <div className="flex flex-col items-end gap-2">
@@ -1222,7 +1254,7 @@ export default function PosApp() {
                     </div>
                     <div className="flex justify-end gap-3 mt-4 pt-3 border-t border-slate-50">
                         <button onClick={() => setHistoryProduct(p)} className="flex items-center gap-1 px-3 py-2 text-purple-600 bg-purple-50 rounded-lg hover:bg-purple-100 text-xs font-bold"><History className="w-4 h-4" /> Historial</button>
-                        <button onClick={() => { setEditingProduct(p); setIsProductModalOpen(true); }} className="p-2 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100"><Users className="w-4 h-4" /></button>
+                        <button onClick={() => { setEditingProduct(p); setProductPriceInput('$' + formatMoney(p.price)); setIsProductModalOpen(true); }} className="p-2 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100"><Users className="w-4 h-4" /></button>
                         <button onClick={() => handleDeleteProduct(p.id)} className="p-2 text-red-600 bg-red-50 rounded-lg hover:bg-red-100"><Trash2 className="w-4 h-4" /></button>
                     </div>
                     </div>
@@ -1264,7 +1296,7 @@ export default function PosApp() {
                             <div key={t.id} onClick={() => setReceiptDetails(t)} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 active:bg-slate-50 cursor-pointer">
                                 <div className="flex justify-between items-start mb-2">
                                     <div>
-                                        <div className="font-bold text-slate-800 text-lg">${t.total}</div>
+                                        <div className="font-bold text-slate-800 text-lg">${formatMoney(t.total)}</div>
                                         <div className="flex items-center gap-1 text-xs text-slate-500 mt-0.5">
                                             <Users className="w-3 h-3" />
                                             <span className="font-medium">{getClientName(t.clientId)}</span>
@@ -1455,17 +1487,17 @@ export default function PosApp() {
                 <div className="flex-1 overflow-y-auto p-5">
                     <div className="text-center mb-6">
                         <div className="text-sm text-slate-500 mb-1">{new Date(receiptDetails.date?.seconds * 1000).toLocaleString()}</div>
-                        <div className="text-4xl font-black text-slate-800 tracking-tight">${receiptDetails.total}</div>
+                        <div className="text-4xl font-black text-slate-800 tracking-tight">${formatMoney(receiptDetails.total)}</div>
                     </div>
                     <div className="space-y-4">
                         {receiptDetails.items.map((item, idx) => (
                             <div key={idx} className="py-2 border-b border-slate-50 border-dashed">
                                 <div className="flex justify-between mb-1">
                                     <div className="font-bold text-slate-700">{item.name}</div>
-                                    <div className="font-bold">${item.transactionPrice * item.qty}</div>
+                                    <div className="font-bold">${formatMoney(item.transactionPrice * item.qty)}</div>
                                 </div>
                                 <div className="text-xs text-slate-400 mb-2">
-                                    {item.qty} u. x ${item.transactionPrice}
+                                    {item.qty} u. x ${formatMoney(item.transactionPrice)}
                                 </div>
                                 {item.fifoDetails && item.fifoDetails.length > 0 && receiptDetails.type === 'sale' && (
                                     <div className="bg-slate-50 p-2 rounded-lg text-[10px]">
@@ -1473,7 +1505,7 @@ export default function PosApp() {
                                         {item.fifoDetails.map((detail, dIdx) => (
                                             <div key={dIdx} className="flex justify-between text-slate-600">
                                                 <span>• {detail.qty} u. del {new Date(detail.date?.seconds * 1000).toLocaleDateString()}</span>
-                                                <span>Costo: ${detail.cost} c/u</span>
+                                                <span>Costo: ${formatMoney(detail.cost)} c/u</span>
                                             </div>
                                         ))}
                                     </div>
@@ -1618,7 +1650,29 @@ export default function PosApp() {
             <h2 className="text-xl font-bold mb-4 text-slate-800">{editingProduct ? 'Editar Producto' : 'Nuevo Producto'}</h2>
             <form onSubmit={handleSaveProduct} className="space-y-4">
               <input name="name" required placeholder="Nombre" defaultValue={editingProduct?.name} className="w-full p-3 border border-slate-200 rounded-xl" />
-              <input name="price" type="number" required placeholder="Precio Venta" defaultValue={editingProduct?.price} className="w-full p-3 border border-slate-200 rounded-xl" />
+              
+              {/* INPUT PRECIO FORMATEADO */}
+              <input 
+                name="price" 
+                type="text" 
+                required 
+                placeholder="Precio Venta" 
+                value={productPriceInput}
+                onChange={(e) => {
+                    // 1. Obtener solo números
+                    const rawValue = e.target.value.replace(/\D/g, '');
+                    // 2. Si está vacío, limpiar estado
+                    if (!rawValue) {
+                        setProductPriceInput('');
+                        return;
+                    }
+                    // 3. Convertir a número y formatear
+                    const numberValue = parseInt(rawValue, 10);
+                    setProductPriceInput('$' + formatMoney(numberValue));
+                }}
+                className="w-full p-3 border border-slate-200 rounded-xl text-slate-700" 
+              />
+
               <select name="category" defaultValue={editingProduct?.category} className="w-full p-3 border border-slate-200 rounded-xl bg-white">
                     <option value="">Seleccionar Categoría</option>
                     {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -1703,7 +1757,7 @@ export default function PosApp() {
                                     </div>
                                     <div><div className="font-bold text-sm capitalize">{t.type === 'sale' ? 'Venta' : 'Compra'}</div><div className="text-xs text-slate-400">{new Date(t.date?.seconds * 1000).toLocaleDateString()}</div></div>
                                 </div>
-                                <div className="text-right"><div className={`font-bold ${t.type === 'sale' ? 'text-red-500' : 'text-green-500'}`}>{t.type === 'sale' ? '-' : '+'}{item.qty} u.</div><div className="text-xs text-slate-500">@ ${item.transactionPrice}</div></div>
+                                <div className="text-right"><div className={`font-bold ${t.type === 'sale' ? 'text-red-500' : 'text-green-500'}`}>{t.type === 'sale' ? '-' : '+'}{item.qty} u.</div><div className="text-xs text-slate-500">@ ${formatMoney(item.transactionPrice)}</div></div>
                             </div>
                         )
                     })}
