@@ -59,7 +59,8 @@ import {
   writeBatch, 
   getDocs, 
   where, 
-  limit
+  limit,
+  increment // IMPORTANTE: Importamos increment para sumar stock atómicamente
 } from 'firebase/firestore';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, signOut } from 'firebase/auth';
 
@@ -187,7 +188,7 @@ export default function PosApp() {
   const [showCatalogModal, setShowCatalogModal] = useState(false); 
     
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [productPriceInput, setProductPriceInput] = useState(''); // NUEVO ESTADO PARA INPUT PRECIO
+  const [productPriceInput, setProductPriceInput] = useState(''); 
   const [receiptDetails, setReceiptDetails] = useState<Transaction | null>(null);
   const [historyProduct, setHistoryProduct] = useState<Product | null>(null);
     
@@ -375,6 +376,61 @@ export default function PosApp() {
           }
       }
   }
+
+  // --- NUEVA FUNCIÓN: BORRAR TRANSACCIÓN (Anular Venta) ---
+  const handleVoidTransaction = async (transaction: Transaction) => {
+      if (!transaction.id || transaction.type !== 'sale') {
+          triggerAlert("Error", "Solo se pueden anular ventas registradas.", "error");
+          return;
+      }
+
+      if (!window.confirm(`¿Estás seguro de anular esta venta por $${formatMoney(transaction.total)}? El stock será devuelto.`)) {
+          return;
+      }
+
+      setLoading(true);
+      setProcessingMsg('Anulando venta y restaurando stock...');
+
+      try {
+          const batch = writeBatch(db);
+
+          // 1. Eliminar el documento de la transacción
+          const transRef = doc(db, 'artifacts', appId, 'public', 'data', 'transactions', transaction.id);
+          batch.delete(transRef);
+
+          // 2. Iterar items para devolver stock y restaurar lotes
+          for (const item of transaction.items) {
+              // A. Devolver stock al producto
+              const prodRef = doc(db, 'artifacts', appId, 'public', 'data', 'products', item.id);
+              batch.update(prodRef, { stock: increment(item.qty) });
+
+              // B. Restaurar valor de inventario (Crear lotes de devolución)
+              if (item.fifoDetails && item.fifoDetails.length > 0) {
+                  for (const detail of item.fifoDetails) {
+                      const newBatchRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'inventory_batches'));
+                      batch.set(newBatchRef, {
+                          id: newBatchRef.id,
+                          productId: item.id,
+                          cost: detail.cost,
+                          quantity: detail.qty,
+                          date: Timestamp.now() // Se crea con fecha actual para que entre al final de la cola FIFO o FIFO modificado
+                      });
+                  }
+              }
+          }
+
+          await batch.commit();
+          setReceiptDetails(null); // Cerrar modal
+          triggerAlert("Venta Anulada", "La venta se eliminó y el stock fue restaurado.", "success");
+
+      } catch (error) {
+          console.error("Error anulando venta:", error);
+          triggerAlert("Error Crítico", "No se pudo anular la venta completa. Revisa tu conexión.", "error");
+      }
+      setLoading(false);
+      setProcessingMsg('');
+  };
+
 
   // --- Lógica del Carrito ---
   const addToCart = (product: Product) => {
@@ -1482,7 +1538,18 @@ export default function PosApp() {
                              </div>
                         )}
                     </div>
-                    <button onClick={() => setReceiptDetails(null)} className="bg-white p-2 rounded-full shadow-sm text-slate-500"><X className="w-5 h-5" /></button>
+                    <div className="flex gap-2">
+                        {receiptDetails.type === 'sale' && (
+                            <button 
+                                onClick={() => handleVoidTransaction(receiptDetails)}
+                                className="bg-red-100 text-red-600 p-2 rounded-full shadow-sm hover:bg-red-200 active:scale-95 transition-transform"
+                                title="Anular Venta (Devolver Stock)"
+                            >
+                                <Trash2 className="w-5 h-5" />
+                            </button>
+                        )}
+                        <button onClick={() => setReceiptDetails(null)} className="bg-white p-2 rounded-full shadow-sm text-slate-500 hover:bg-slate-100"><X className="w-5 h-5" /></button>
+                    </div>
                 </div>
                 <div className="flex-1 overflow-y-auto p-5">
                     <div className="text-center mb-6">
