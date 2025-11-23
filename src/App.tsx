@@ -39,7 +39,9 @@ import {
   AlertTriangle,
   BookOpen,
   CreditCard,
-  Banknote
+  Banknote,
+  Pencil,
+  RefreshCw
 } from 'lucide-react';
 
 // Importamos las funciones de Firebase necesarias
@@ -60,7 +62,7 @@ import {
   getDocs, 
   where, 
   limit,
-  increment // IMPORTANTE: Importamos increment para sumar stock atómicamente
+  increment
 } from 'firebase/firestore';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, signOut } from 'firebase/auth';
 
@@ -170,6 +172,7 @@ export default function PosApp() {
   const [selectedClient, setSelectedClient] = useState<string>('');
   const [selectedSupplier, setSelectedSupplier] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<'Efectivo' | 'Transferencia' | ''>(''); 
+  const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null); // ID de la transacción que se está editando
     
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -377,58 +380,103 @@ export default function PosApp() {
       }
   }
 
-  // --- NUEVA FUNCIÓN: BORRAR TRANSACCIÓN (Anular Venta) ---
+  // --- FUNCIÓN: BORRAR TRANSACCIÓN (Venta o Compra) ---
   const handleVoidTransaction = async (transaction: Transaction) => {
-      if (!transaction.id || transaction.type !== 'sale') {
-          triggerAlert("Error", "Solo se pueden anular ventas registradas.", "error");
-          return;
-      }
+      if (!transaction.id) return;
 
-      if (!window.confirm(`¿Estás seguro de anular esta venta por $${formatMoney(transaction.total)}? El stock será devuelto.`)) {
-          return;
-      }
+      const isSale = transaction.type === 'sale';
+      const confirmMsg = isSale 
+        ? `¿Anular venta por $${formatMoney(transaction.total)}? (Devuelve stock)` 
+        : `¿Eliminar COMPRA por $${formatMoney(transaction.total)}? (Resta stock)`;
+
+      if (!window.confirm(confirmMsg)) return;
 
       setLoading(true);
-      setProcessingMsg('Anulando venta y restaurando stock...');
+      setProcessingMsg(isSale ? 'Anulando venta...' : 'Eliminando registro de compra...');
 
       try {
           const batch = writeBatch(db);
-
-          // 1. Eliminar el documento de la transacción
           const transRef = doc(db, 'artifacts', appId, 'public', 'data', 'transactions', transaction.id);
+          
+          // 1. Eliminar el documento de la transacción
           batch.delete(transRef);
 
-          // 2. Iterar items para devolver stock y restaurar lotes
-          for (const item of transaction.items) {
-              // A. Devolver stock al producto
-              const prodRef = doc(db, 'artifacts', appId, 'public', 'data', 'products', item.id);
-              batch.update(prodRef, { stock: increment(item.qty) });
+          if (isSale) {
+              // LÓGICA ANULAR VENTA (Devolver Stock + Crear Lotes)
+              for (const item of transaction.items) {
+                  const prodRef = doc(db, 'artifacts', appId, 'public', 'data', 'products', item.id);
+                  batch.update(prodRef, { stock: increment(item.qty) });
 
-              // B. Restaurar valor de inventario (Crear lotes de devolución)
-              if (item.fifoDetails && item.fifoDetails.length > 0) {
-                  for (const detail of item.fifoDetails) {
-                      const newBatchRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'inventory_batches'));
-                      batch.set(newBatchRef, {
-                          id: newBatchRef.id,
-                          productId: item.id,
-                          cost: detail.cost,
-                          quantity: detail.qty,
-                          date: Timestamp.now() // Se crea con fecha actual para que entre al final de la cola FIFO o FIFO modificado
-                      });
+                  if (item.fifoDetails && item.fifoDetails.length > 0) {
+                      for (const detail of item.fifoDetails) {
+                          const newBatchRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'inventory_batches'));
+                          batch.set(newBatchRef, {
+                              id: newBatchRef.id,
+                              productId: item.id,
+                              cost: detail.cost,
+                              quantity: detail.qty,
+                              date: Timestamp.now()
+                          });
+                      }
+                  }
+              }
+          } else {
+              // LÓGICA ELIMINAR COMPRA (Restar Stock + Borrar/Restar Lotes)
+              
+              for (const item of transaction.items) {
+                  const prodRef = doc(db, 'artifacts', appId, 'public', 'data', 'products', item.id);
+                  batch.update(prodRef, { stock: increment(-item.qty) }); // Restar lo que se "des-compró"
+
+                  // Buscar lotes que coincidan con este producto y costo para reducirlos
+                  const batchesRef = collection(db, 'artifacts', appId, 'public', 'data', 'inventory_batches');
+                  const qBatch = query(batchesRef, where('productId', '==', item.id), where('cost', '==', item.transactionPrice));
+                  const batchSnaps = await getDocs(qBatch);
+                  
+                  let qtyToRemove = item.qty;
+                  
+                  // Intentamos quitar cantidad de los lotes más recientes encontrados
+                  for (const bDoc of batchSnaps.docs) {
+                      if (qtyToRemove <= 0) break;
+                      const bData = bDoc.data();
+                      const canTake = Math.min(bData.quantity, qtyToRemove);
+                      
+                      if (bData.quantity - canTake <= 0) {
+                          batch.delete(bDoc.ref); // Si queda en 0, borramos el lote
+                      } else {
+                          batch.update(bDoc.ref, { quantity: increment(-canTake) });
+                      }
+                      qtyToRemove -= canTake;
                   }
               }
           }
 
           await batch.commit();
-          setReceiptDetails(null); // Cerrar modal
-          triggerAlert("Venta Anulada", "La venta se eliminó y el stock fue restaurado.", "success");
+          setReceiptDetails(null);
+          triggerAlert("Operación Exitosa", "El registro se ha eliminado y el inventario actualizado.", "success");
 
       } catch (error) {
-          console.error("Error anulando venta:", error);
-          triggerAlert("Error Crítico", "No se pudo anular la venta completa. Revisa tu conexión.", "error");
+          console.error("Error anulando:", error);
+          triggerAlert("Error", "No se pudo completar la operación.", "error");
       }
       setLoading(false);
       setProcessingMsg('');
+  };
+
+  // --- FUNCIÓN: PREPARAR EDICIÓN COMPRA ---
+  const handleEditPurchase = (transaction: Transaction) => {
+      if (transaction.type !== 'purchase') return;
+      
+      // 1. Cargar items al carrito
+      setCart(transaction.items);
+      // 2. Cargar proveedor
+      if(transaction.clientId) setSelectedSupplier(transaction.clientId);
+      // 3. Cambiar vista
+      setView('purchases');
+      setShowPurchaseHistory(false);
+      // 4. Marcar como edición
+      setEditingTransactionId(transaction.id);
+      
+      triggerAlert("Modo Edición", "Modifica los productos y confirma para actualizar el stock.", "success");
   };
 
 
@@ -485,7 +533,8 @@ export default function PosApp() {
     setSelectedClient('');
     setClientSearchTerm(''); 
     setSelectedSupplier('');
-    setPaymentMethod(''); // Limpiar medio de pago
+    setPaymentMethod(''); 
+    setEditingTransactionId(null); // Limpiar modo edición si se cancela/vacía
   };
 
   const cartTotal = useMemo(() => {
@@ -528,7 +577,6 @@ export default function PosApp() {
             triggerAlert("Falta Cliente", "Es OBLIGATORIO seleccionar un cliente para realizar la venta.");
             return;
         }
-        // VALIDACIÓN DE PAGO
         if (!paymentMethod) {
             triggerAlert("Falta Medio de Pago", "Selecciona si es Efectivo o Transferencia.");
             return;
@@ -548,9 +596,47 @@ export default function PosApp() {
     }
 
     setLoading(true);
-    setProcessingMsg(type === 'purchase' ? 'Registrando Lotes...' : 'Calculando Costos FIFO...');
+    setProcessingMsg(editingTransactionId ? 'Actualizando Compra...' : (type === 'purchase' ? 'Registrando Lotes...' : 'Calculando Costos FIFO...'));
 
     try {
+      
+      // SI ESTAMOS EDITANDO UNA COMPRA, PRIMERO ELIMINAMOS LA ANTERIOR
+      if (editingTransactionId && type === 'purchase') {
+          const oldTrans = transactions.find(t => t.id === editingTransactionId);
+          
+          if (oldTrans) {
+              const batchDelete = writeBatch(db);
+              
+              // 1. Restar stock que se había sumado
+              for (const item of oldTrans.items) {
+                  const prodRef = doc(db, 'artifacts', appId, 'public', 'data', 'products', item.id);
+                  batchDelete.update(prodRef, { stock: increment(-item.qty) });
+
+                  // 2. Borrar/Reducir Lotes creados anteriormente
+                  const batchesRef = collection(db, 'artifacts', appId, 'public', 'data', 'inventory_batches');
+                  const qBatch = query(batchesRef, where('productId', '==', item.id), where('cost', '==', item.transactionPrice));
+                  const batchSnaps = await getDocs(qBatch);
+                  let qtyToRemove = item.qty;
+                  
+                  for (const bDoc of batchSnaps.docs) {
+                      if (qtyToRemove <= 0) break;
+                      const bData = bDoc.data();
+                      const canTake = Math.min(bData.quantity, qtyToRemove);
+                      if (bData.quantity - canTake <= 0) {
+                          batchDelete.delete(bDoc.ref);
+                      } else {
+                          batchDelete.update(bDoc.ref, { quantity: increment(-canTake) });
+                      }
+                      qtyToRemove -= canTake;
+                  }
+              }
+              // 3. Borrar la transacción vieja
+              batchDelete.delete(doc(db, 'artifacts', appId, 'public', 'data', 'transactions', editingTransactionId));
+              await batchDelete.commit();
+          }
+      }
+
+      // AHORA PROCEDEMOS A CREAR LA NUEVA (O LA NORMAL SI NO ES EDICIÓN)
       const batch = writeBatch(db);
       let totalTransactionCost = 0; 
       const finalCartItems: CartItem[] = []; 
@@ -570,12 +656,13 @@ export default function PosApp() {
           batch.set(batchRef, newBatch);
             
           const currentProd = products.find(p => p.id === item.id);
-          if (currentProd) {
-            batch.update(productRef, { stock: currentProd.stock + item.qty });
-          }
+          // Usamos increment para seguridad atómica
+          batch.update(productRef, { stock: increment(item.qty) });
+          
           finalCartItems.push(item);
 
         } else {
+          // LÓGICA DE VENTA (FIFO)
           let remainingQtyToSell = item.qty;
           let itemTotalCost = 0;
           const currentItemFifoDetails: FifoDetail[] = [];
@@ -596,8 +683,7 @@ export default function PosApp() {
             const costForThisPart = take * invBatch.cost;
               
             itemTotalCost += costForThisPart;
-            
-            // SE ELIMINÓ LA LÍNEA DUPLICADA AQUÍ: itemTotalCost += costForThisPart;
+            // NOTA: Aquí ya no está la línea duplicada :)
               
             currentItemFifoDetails.push({
                 cost: invBatch.cost,
@@ -611,10 +697,7 @@ export default function PosApp() {
 
           totalTransactionCost += itemTotalCost;
 
-          const currentProd = products.find(p => p.id === item.id);
-          if (currentProd) {
-            batch.update(productRef, { stock: currentProd.stock - item.qty });
-          }
+          batch.update(productRef, { stock: increment(-item.qty) });
 
           finalCartItems.push({
             ...item,
@@ -625,6 +708,7 @@ export default function PosApp() {
       }
 
       const transRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'transactions'));
+      
       const transactionData: any = {
         type,
         items: finalCartItems,
@@ -635,13 +719,18 @@ export default function PosApp() {
 
       if (type === 'sale') {
         transactionData.totalCost = totalTransactionCost;
-        transactionData.paymentMethod = paymentMethod; // GUARDAMOS EL MEDIO DE PAGO
+        transactionData.paymentMethod = paymentMethod; 
       }
 
       batch.set(transRef, transactionData);
       await batch.commit();
       clearCart();
-      triggerAlert("Éxito", "Transacción registrada correctamente.", "success");
+      
+      if (editingTransactionId) {
+          triggerAlert("Actualizado", "La compra se ha corregido correctamente.", "success");
+      } else {
+          triggerAlert("Éxito", "Transacción registrada correctamente.", "success");
+      }
         
     } catch (error) {
       console.error("Error transaction:", error);
@@ -903,7 +992,7 @@ export default function PosApp() {
           {view === 'pos' ? 'Punto de Venta' : 
            view === 'inventory' ? 'Inventario' :
            view === 'clients' ? 'Clientes' :
-           view === 'purchases' ? (showPurchaseHistory ? 'Historial Compras' : 'Abastecimiento') :
+           view === 'purchases' ? (showPurchaseHistory ? 'Historial Compras' : (editingTransactionId ? 'Editar Compra' : 'Abastecimiento')) :
            view === 'receipts' ? 'Recibos' : 'Dashboard'}
         </h1>
         <div className="text-xs bg-white/20 px-2 py-1 rounded">{user ? 'En línea' : 'Offline'}</div>
@@ -926,14 +1015,20 @@ export default function PosApp() {
           <div className="flex flex-col h-full relative"> {/* Contenedor Flex Completo */}
             
             {view === 'purchases' && (
-               <div className="bg-emerald-50 px-4 py-2 border-b border-emerald-100 flex justify-between items-center shrink-0">
-                 <div className="text-xs text-emerald-700 flex items-center gap-2">
-                    <Truck className="w-4 h-4" />
-                    <span>Registro de costos.</span>
+               <div className={`px-4 py-2 border-b flex justify-between items-center shrink-0 ${editingTransactionId ? 'bg-amber-100 border-amber-200' : 'bg-emerald-50 border-emerald-100'}`}>
+                 <div className={`text-xs flex items-center gap-2 ${editingTransactionId ? 'text-amber-800 font-bold' : 'text-emerald-700'}`}>
+                    {editingTransactionId ? <Pencil className="w-4 h-4" /> : <Truck className="w-4 h-4" />}
+                    <span>{editingTransactionId ? 'MODO EDICIÓN: Corrige los datos.' : 'Registro de costos.'}</span>
                  </div>
-                 <button onClick={() => setShowPurchaseHistory(true)} className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-1 rounded flex items-center gap-1">
-                     <History className="w-3 h-3" /> Historial
-                 </button>
+                 {editingTransactionId ? (
+                     <button onClick={clearCart} className="text-xs font-bold text-amber-800 bg-white/50 px-2 py-1 rounded border border-amber-200">
+                         Cancelar Edición
+                     </button>
+                 ) : (
+                     <button onClick={() => setShowPurchaseHistory(true)} className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-1 rounded flex items-center gap-1">
+                         <History className="w-3 h-3" /> Historial
+                     </button>
+                 )}
                </div>
             )}
 
@@ -1009,15 +1104,17 @@ export default function PosApp() {
               <div className="fixed bottom-[76px] left-0 w-full z-20 flex flex-col shadow-[0_-8px_30px_rgba(0,0,0,0.15)] animate-in slide-in-from-bottom duration-300">
                   {/* Se usa bottom-[76px] aprox para que quede justo encima del menú inferior */}
                   
-                  <div className="bg-white rounded-t-3xl border-t border-slate-100 flex flex-col">
+                  <div className={`rounded-t-3xl border-t flex flex-col ${editingTransactionId ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-100'}`}>
                     
                     {/* Lista de Items (LIMITADA A 2 ITEMS VISUALES) */}
                     <div className="max-h-48 overflow-y-auto p-4 border-b border-slate-50">
                       <div className="flex justify-between items-center mb-2">
-                        <h3 className="font-bold text-xs text-slate-400 uppercase tracking-wider">
-                          {view === 'pos' ? 'Detalle Venta' : 'Entrada Stock'}
+                        <h3 className={`font-bold text-xs uppercase tracking-wider ${editingTransactionId ? 'text-amber-700' : 'text-slate-400'}`}>
+                          {view === 'pos' ? 'Detalle Venta' : (editingTransactionId ? 'Editando Compra' : 'Entrada Stock')}
                         </h3>
-                        <button onClick={clearCart} className="text-red-500 text-[10px] font-bold px-2 py-1 bg-red-50 rounded hover:bg-red-100">Vaciar</button>
+                        <button onClick={clearCart} className="text-red-500 text-[10px] font-bold px-2 py-1 bg-red-50 rounded hover:bg-red-100">
+                            {editingTransactionId ? 'Cancelar' : 'Vaciar'}
+                        </button>
                       </div>
                         
                       {cart.map(item => (
@@ -1066,7 +1163,7 @@ export default function PosApp() {
                     </div>
 
                     {/* Panel de Acciones Compacto */}
-                    <div className="shrink-0 p-3 bg-slate-50 space-y-3"> 
+                    <div className={`shrink-0 p-3 space-y-3 ${editingTransactionId ? 'bg-amber-50' : 'bg-slate-50'}`}> 
                       
                         {/* FILA 1: CLIENTE + MEDIO DE PAGO */}
                         <div className="flex gap-2 items-center">
@@ -1144,7 +1241,7 @@ export default function PosApp() {
                                 </>
                             ) : (
                                 <select 
-                                    className="flex-1 h-10 text-sm border border-emerald-200 rounded-xl bg-white focus:ring-2 focus:ring-emerald-500 outline-none px-2"
+                                    className={`flex-1 h-10 text-sm border rounded-xl focus:ring-2 outline-none px-2 ${editingTransactionId ? 'bg-amber-100 border-amber-200 text-amber-900' : 'bg-white border-emerald-200 focus:ring-emerald-500'}`}
                                     value={selectedSupplier}
                                     onChange={(e) => setSelectedSupplier(e.target.value)}
                                 >
@@ -1172,11 +1269,16 @@ export default function PosApp() {
                                 disabled={loading}
                                 className={`flex-1 h-12 rounded-xl font-bold text-white shadow-lg flex justify-between px-6 items-center active:scale-95 transition-transform
                                 ${view === 'purchases' 
-                                    ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200' 
+                                    ? (editingTransactionId ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-200' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200')
                                     : (!paymentMethod ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200')
                                 }`}
                             >
-                                <span>{view === 'purchases' ? 'Confirmar' : 'Cobrar'}</span>
+                                <span>
+                                    {view === 'purchases' 
+                                        ? (editingTransactionId ? 'Actualizar Compra' : 'Confirmar') 
+                                        : 'Cobrar'
+                                    }
+                                </span>
                                 <span className="text-xl">${formatMoney(cartTotal)}</span>
                             </button>
                         </div>
@@ -1189,8 +1291,9 @@ export default function PosApp() {
 
         {/* VISTA: HISTORIAL DE COMPRAS */}
         {view === 'purchases' && showPurchaseHistory && (
-            <div className="p-4 overflow-y-auto">
-                <div className="flex justify-between items-center mb-4">
+            <div className="flex flex-col h-full overflow-hidden"> 
+                {/* HEADER HISTORIAL */}
+                <div className="p-4 shrink-0 flex justify-between items-center bg-white border-b border-slate-100 shadow-sm z-10">
                       <button onClick={() => setShowPurchaseHistory(false)} className="text-emerald-600 flex items-center gap-1 font-medium text-sm">
                          <ChevronLeft className="w-4 h-4" /> Volver
                       </button>
@@ -1199,8 +1302,9 @@ export default function PosApp() {
                       </button>
                 </div>
 
+                {/* FILTROS */}
                 {showPhFilters && (
-                    <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mb-4 space-y-3 animate-in slide-in-from-top duration-200">
+                    <div className="p-4 bg-slate-50 border-b border-slate-100 space-y-3 shrink-0 animate-in slide-in-from-top duration-200">
                           <div className="grid grid-cols-2 gap-3">
                             <input type="date" className="w-full p-2 border rounded-lg text-sm" value={phStartDate} onChange={e => setPhStartDate(e.target.value)} />
                             <input type="date" className="w-full p-2 border rounded-lg text-sm" value={phEndDate} onChange={e => setPhEndDate(e.target.value)} />
@@ -1214,10 +1318,11 @@ export default function PosApp() {
                     </div>
                 )}
 
-                <div className="space-y-3">
+                {/* LISTA CON SCROLL INDEPENDIENTE */}
+                <div className="flex-1 overflow-y-auto p-4 space-y-3 pb-24"> 
                     {filteredPurchases.map(t => (
-                        <div key={t.id} onClick={() => setReceiptDetails(t)} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 active:bg-slate-50 cursor-pointer">
-                            <div className="flex justify-between items-start mb-2">
+                        <div key={t.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 group">
+                            <div className="flex justify-between items-start mb-2" onClick={() => setReceiptDetails(t)}>
                                 <div>
                                     <div className="font-bold text-slate-800 text-lg">${formatMoney(t.total)}</div>
                                     <div className="flex items-center gap-1 text-xs text-slate-500 mt-0.5">
@@ -1230,11 +1335,27 @@ export default function PosApp() {
                                 </div>
                             </div>
                             <div className="flex justify-between items-center pt-2 border-t border-slate-50 mt-2">
-                                <div className="text-xs text-slate-400">
+                                <div className="text-xs text-slate-400" onClick={() => setReceiptDetails(t)}>
                                     {new Date(t.date?.seconds * 1000).toLocaleDateString()} • {t.items.length} items
                                 </div>
-                                <div className="flex items-center text-emerald-600 text-xs font-medium gap-1">
-                                    Ver Detalle <ChevronRight className="w-3 h-3" />
+                                <div className="flex items-center gap-2">
+                                    <button 
+                                        onClick={() => handleEditPurchase(t)}
+                                        className="p-2 text-amber-600 bg-amber-50 rounded-lg hover:bg-amber-100 active:scale-95 transition-transform"
+                                        title="Editar Compra"
+                                    >
+                                        <Pencil className="w-3 h-3" />
+                                    </button>
+                                    <button 
+                                        onClick={() => handleVoidTransaction(t)}
+                                        className="p-2 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 active:scale-95 transition-transform"
+                                        title="Eliminar Compra"
+                                    >
+                                        <Trash2 className="w-3 h-3" />
+                                    </button>
+                                    <div className="flex items-center text-emerald-600 text-xs font-medium gap-1 ml-2 cursor-pointer" onClick={() => setReceiptDetails(t)}>
+                                        Ver <ChevronRight className="w-3 h-3" />
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1298,7 +1419,7 @@ export default function PosApp() {
                             <h3 className="font-bold text-slate-800">{p.name}</h3>
                             <p className="text-xs text-slate-500 uppercase mb-2">{categories.find(c => c.id === p.category)?.name || p.category}</p>
                             <div className="inline-flex items-center bg-slate-100 px-2 py-1 rounded-lg text-xs font-medium text-slate-600">
-                                Venta: <span className="text-slate-900 font-bold ml-1">${formatMoney(p.price)}</span>
+                                Venta: <span className="text-slate-900 ml-1">${formatMoney(p.price)}</span>
                             </div>
                         </div>
                         <div className="flex flex-col items-end gap-2">
@@ -1519,8 +1640,8 @@ export default function PosApp() {
       {/* Modales */}
       {receiptDetails && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm">
-            <div className="bg-white w-full max-w-md h-[85vh] sm:h-auto sm:rounded-2xl rounded-t-3xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300">
-                <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+            <div className="bg-white w-full max-w-md h-[85vh] sm:h-auto sm:max-h-[85vh] sm:rounded-2xl rounded-t-3xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300">
+                <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
                     <div>
                         <h2 className="font-bold text-lg text-slate-800 flex items-center gap-2">
                             <Receipt className="w-5 h-5 text-slate-500" />
