@@ -41,7 +41,9 @@ import {
   CreditCard,
   Banknote,
   Pencil,
-  RefreshCw
+  RefreshCw,
+  Image as ImageIcon, 
+  Upload
 } from 'lucide-react';
 
 // Importamos las funciones de Firebase necesarias
@@ -65,6 +67,8 @@ import {
   increment
 } from 'firebase/firestore';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, signOut } from 'firebase/auth';
+// IMPORTANTE: Importamos Storage
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 // --- TU CONFIGURACIÓN DE FIREBASE ---
 const firebaseConfig = {
@@ -72,7 +76,7 @@ const firebaseConfig = {
   authDomain: "negocio-51df2.firebaseapp.com",
   databaseURL: "https://negocio-51df2-default-rtdb.firebaseio.com",
   projectId: "negocio-51df2",
-  storageBucket: "negocio-51df2.firebasestorage.app",
+  storageBucket: "negocio-51df2.firebasestorage.app", // Tu bucket configurado correctamente
   messagingSenderId: "394431118056",
   appId: "1:394431118056:web:b383489e2fc49951f5e75d",
   measurementId: "G-S392P9NCXH"
@@ -83,6 +87,7 @@ const app = initializeApp(firebaseConfig);
 const analytics = getAnalytics(app); 
 const auth = getAuth(app);
 const db = getFirestore(app);
+const storage = getStorage(app); // Inicializamos Storage
 
 // ID Fijo para producción 
 const appId = 'negocio-produccion'; 
@@ -105,6 +110,7 @@ interface Product {
   price: number;
   stock: number;
   category: string; 
+  imageUrl?: string; 
 }
 
 interface InventoryBatch {
@@ -172,7 +178,7 @@ export default function PosApp() {
   const [selectedClient, setSelectedClient] = useState<string>('');
   const [selectedSupplier, setSelectedSupplier] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<'Efectivo' | 'Transferencia' | ''>(''); 
-  const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null); // ID de la transacción que se está editando
+  const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null); 
     
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -602,6 +608,9 @@ export default function PosApp() {
       
       // SI ESTAMOS EDITANDO UNA COMPRA, PRIMERO ELIMINAMOS LA ANTERIOR
       if (editingTransactionId && type === 'purchase') {
+          // Usamos lógica similar a handleVoidTransaction pero interna
+          // Necesitamos obtener la transacción antigua primero para saber qué borrar
+          // Como React state 'transactions' tiene los datos, los buscamos ahí.
           const oldTrans = transactions.find(t => t.id === editingTransactionId);
           
           if (oldTrans) {
@@ -709,6 +718,11 @@ export default function PosApp() {
 
       const transRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'transactions'));
       
+      // Si estamos editando, podríamos querer mantener el ID o la fecha, 
+      // pero para simplificar y mantener consistencia de "nuevo evento", creamos uno nuevo con fecha actual.
+      // Opcional: Si quisieras mantener la fecha original, tendrías que pasarla. 
+      // Por ahora, al editar se asume que es una corrección "ahora".
+      
       const transactionData: any = {
         type,
         items: finalCartItems,
@@ -750,27 +764,65 @@ export default function PosApp() {
 
   const handleSaveProduct = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setLoading(true);
+    setProcessingMsg("Guardando producto...");
+
     const formData = new FormData(e.currentTarget);
+    const imageFile = formData.get('image') as File;
+    
+    // Validación de imagen OBLIGATORIA para productos nuevos
+    if (!editingProduct && (!imageFile || imageFile.size === 0)) {
+        setLoading(false);
+        setProcessingMsg("");
+        triggerAlert("Falta Imagen", "La imagen es OBLIGATORIA para crear un producto nuevo.", "error");
+        return;
+    }
     
     // Limpieza del precio (eliminar $ y puntos)
     const rawPrice = formData.get('price') as string;
     const priceNumber = parseInt(rawPrice.replace(/\D/g, ''), 10) || 0;
 
+    let imageUrl = editingProduct?.imageUrl || '';
+
+    // Lógica de Subida de Imagen
+    if (imageFile && imageFile.size > 0) {
+        setProcessingMsg("Subiendo imagen...");
+        try {
+            // Crear referencia única
+            const storageRef = ref(storage, `products/${Date.now()}_${imageFile.name}`);
+            // Subir
+            const snapshot = await uploadBytes(storageRef, imageFile);
+            // Obtener URL
+            imageUrl = await getDownloadURL(snapshot.ref);
+        } catch (error) {
+            console.error("Error subiendo imagen", error);
+            triggerAlert("Error", "No se pudo subir la imagen. Intenta de nuevo.", "error");
+            setLoading(false);
+            return; // Detenemos si la imagen obligatoria falla (o en edición si falla también)
+        }
+    }
+
     const productData = {
       name: formData.get('name') as string,
-      price: priceNumber, // Guardamos el número limpio
+      price: priceNumber,
       category: formData.get('category') as string,
+      stock: editingProduct ? editingProduct.stock : 0, // Mantener stock si es edición
+      imageUrl: imageUrl // Guardar URL
     };
+
     try {
       if (editingProduct) {
         await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'products', editingProduct.id), productData);
       } else {
-        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'products'), { ...productData, stock: 0 });
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'products'), productData);
       }
       setIsProductModalOpen(false); 
       setEditingProduct(null);
-      setProductPriceInput(''); // Reset input
+      setProductPriceInput(''); 
     } catch (error) { console.error(error); }
+    
+    setLoading(false);
+    setProcessingMsg('');
   };
 
   const handleSaveClient = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -1075,22 +1127,38 @@ export default function PosApp() {
                         <button 
                         key={product.id}
                         onClick={() => addToCart(product)}
-                        className="bg-white p-3 rounded-xl shadow-sm border border-slate-100 active:scale-95 transition-transform text-left flex flex-col justify-between h-28 relative overflow-hidden"
+                        // Cambiamos altura a h-48 para dar espacio a la imagen
+                        className="bg-white rounded-xl shadow-sm border border-slate-100 active:scale-95 transition-transform text-left flex flex-col h-48 relative overflow-hidden"
                         >
-                        {product.stock <= 0 && view === 'pos' && (
-                            <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-10 backdrop-blur-[1px]">
-                                <span className="bg-red-100 text-red-700 text-xs font-bold px-2 py-1 rounded -rotate-12 border border-red-200">AGOTADO</span>
-                            </div>
-                        )}
-                        <span className="font-medium line-clamp-2 text-sm leading-tight text-slate-700">{product.name}</span>
-                        <div className="flex justify-between items-end mt-2">
-                            <div className="flex flex-col">
-                            <span className="text-[10px] text-slate-400 uppercase">Precio</span>
-                            <span className="font-bold text-blue-600 text-lg">${formatMoney(product.price)}</span>
-                            </div>
-                            <div className={`text-[10px] px-2 py-1 rounded-lg font-bold flex flex-col items-center ${status.color}`}>
-                                <span>{product.stock}</span>
-                                <span className="text-[8px] font-normal">{status.label}</span>
+                        {/* IMAGEN DEL PRODUCTO */}
+                        <div className="h-20 w-full bg-slate-100 shrink-0 relative">
+                            {product.imageUrl ? (
+                                <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
+                            ) : (
+                                <div className="w-full h-full flex items-center justify-center text-slate-300">
+                                    <Package className="w-8 h-8" />
+                                </div>
+                            )}
+                            {/* Badge de Stock encima de la imagen */}
+                            {product.stock <= 0 && view === 'pos' && (
+                                <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-10 backdrop-blur-[1px]">
+                                    <span className="bg-red-100 text-red-700 text-xs font-bold px-2 py-1 rounded -rotate-12 border border-red-200">AGOTADO</span>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* INFO PRODUCTO */}
+                        <div className="p-3 flex flex-col justify-between flex-1">
+                            <span className="font-medium line-clamp-2 text-sm leading-tight text-slate-700">{product.name}</span>
+                            <div className="flex justify-between items-end mt-1">
+                                <div className="flex flex-col">
+                                <span className="text-[10px] text-slate-400 uppercase">Precio</span>
+                                <span className="font-bold text-blue-600 text-lg">${formatMoney(product.price)}</span>
+                                </div>
+                                <div className={`text-[10px] px-2 py-1 rounded-lg font-bold flex flex-col items-center ${status.color}`}>
+                                    <span>{product.stock}</span>
+                                    <span className="text-[8px] font-normal">{status.label}</span>
+                                </div>
                             </div>
                         </div>
                         </button>
@@ -1413,27 +1481,38 @@ export default function PosApp() {
               {filteredProducts.map(p => {
                 const status = getStockStatus(p.stock);
                 return (
-                    <div key={p.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-                    <div className="flex justify-between items-start">
-                        <div>
-                            <h3 className="font-bold text-slate-800">{p.name}</h3>
-                            <p className="text-xs text-slate-500 uppercase mb-2">{categories.find(c => c.id === p.category)?.name || p.category}</p>
-                            <div className="inline-flex items-center bg-slate-100 px-2 py-1 rounded-lg text-xs font-medium text-slate-600">
-                                Venta: <span className="text-slate-900 ml-1">${formatMoney(p.price)}</span>
+                    <div key={p.id} className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden h-48 flex flex-col">
+                        {/* IMAGEN EN INVENTARIO */}
+                        <div className="h-24 w-full bg-slate-100 relative shrink-0">
+                            {p.imageUrl ? (
+                                <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover" />
+                            ) : (
+                                <div className="w-full h-full flex items-center justify-center text-slate-300">
+                                    <Package className="w-8 h-8" />
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="p-3 flex-1 flex flex-col justify-between">
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <h3 className="font-bold text-slate-800 line-clamp-1 text-sm">{p.name}</h3>
+                                    <div className="inline-flex items-center bg-slate-100 px-2 py-1 rounded-lg text-xs font-medium text-slate-600 mt-1">
+                                        Venta: <span className="text-slate-900 ml-1">${formatMoney(p.price)}</span>
+                                    </div>
+                                </div>
+                                <div className="flex flex-col items-end gap-1">
+                                    <div className={`text-xs font-bold px-2 py-1 rounded-lg ${status.color}`}>
+                                        {p.stock} u.
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex justify-end gap-2 mt-2">
+                                <button onClick={() => setHistoryProduct(p)} className="p-1.5 text-purple-600 bg-purple-50 rounded-lg hover:bg-purple-100"><History className="w-4 h-4" /></button>
+                                <button onClick={() => { setEditingProduct(p); setProductPriceInput('$' + formatMoney(p.price)); setIsProductModalOpen(true); }} className="p-1.5 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100"><Users className="w-4 h-4" /></button>
+                                <button onClick={() => handleDeleteProduct(p.id)} className="p-1.5 text-red-600 bg-red-50 rounded-lg hover:bg-red-100"><Trash2 className="w-4 h-4" /></button>
                             </div>
                         </div>
-                        <div className="flex flex-col items-end gap-2">
-                            <div className={`text-sm font-bold px-3 py-1 rounded-lg ${status.color}`}>
-                                {p.stock} u.
-                            </div>
-                            <span className="text-[10px] font-bold text-slate-400">{status.label}</span>
-                        </div>
-                    </div>
-                    <div className="flex justify-end gap-3 mt-4 pt-3 border-t border-slate-50">
-                        <button onClick={() => setHistoryProduct(p)} className="flex items-center gap-1 px-3 py-2 text-purple-600 bg-purple-50 rounded-lg hover:bg-purple-100 text-xs font-bold"><History className="w-4 h-4" /> Historial</button>
-                        <button onClick={() => { setEditingProduct(p); setProductPriceInput('$' + formatMoney(p.price)); setIsProductModalOpen(true); }} className="p-2 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100"><Users className="w-4 h-4" /></button>
-                        <button onClick={() => handleDeleteProduct(p.id)} className="p-2 text-red-600 bg-red-50 rounded-lg hover:bg-red-100"><Trash2 className="w-4 h-4" /></button>
-                    </div>
                     </div>
                 );
               })}
@@ -1837,6 +1916,26 @@ export default function PosApp() {
           <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
             <h2 className="text-xl font-bold mb-4 text-slate-800">{editingProduct ? 'Editar Producto' : 'Nuevo Producto'}</h2>
             <form onSubmit={handleSaveProduct} className="space-y-4">
+              <div className="flex flex-col items-center mb-4">
+                  <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center overflow-hidden border-2 border-slate-200 relative group cursor-pointer">
+                      {editingProduct?.imageUrl ? (
+                          <img src={editingProduct.imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                      ) : (
+                          <ImageIcon className="w-10 h-10 text-slate-400" />
+                      )}
+                      <input 
+                          type="file" 
+                          name="image"
+                          accept="image/*"
+                          className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                      />
+                      <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Upload className="w-6 h-6 text-white" />
+                      </div>
+                  </div>
+                  <span className="text-xs text-slate-400 mt-2">Toca para cambiar imagen</span>
+              </div>
+
               <input name="name" required placeholder="Nombre" defaultValue={editingProduct?.name} className="w-full p-3 border border-slate-200 rounded-xl" />
               
               {/* INPUT PRECIO FORMATEADO */}
