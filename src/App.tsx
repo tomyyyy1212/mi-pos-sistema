@@ -76,7 +76,7 @@ const firebaseConfig = {
   authDomain: "negocio-51df2.firebaseapp.com",
   databaseURL: "https://negocio-51df2-default-rtdb.firebaseio.com",
   projectId: "negocio-51df2",
-  storageBucket: "negocio-51df2.firebasestorage.app", // Tu bucket configurado correctamente
+  storageBucket: "negocio-51df2.firebasestorage.app",
   messagingSenderId: "394431118056",
   appId: "1:394431118056:web:b383489e2fc49951f5e75d",
   measurementId: "G-S392P9NCXH"
@@ -1120,18 +1120,19 @@ export default function PosApp() {
             {/* 2. GRID DE PRODUCTOS (Scrollable) */}
             {/* Agregamos padding-bottom grande para que el contenido no quede oculto tras el panel fijo */}
             <div className="flex-1 overflow-y-auto px-4 pt-4 pb-48"> 
-                <div className="grid grid-cols-2 gap-3">
+                {/* CAMBIO CLAVE: GRILLA RESPONSIVA 3, 4, 5, 6 columnas en PC */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                 {filteredProducts.map(product => {
                     const status = getStockStatus(product.stock);
                     return (
                         <button 
                         key={product.id}
                         onClick={() => addToCart(product)}
-                        // Cambiamos altura a h-48 para dar espacio a la imagen
-                        className="bg-white rounded-xl shadow-sm border border-slate-100 active:scale-95 transition-transform text-left flex flex-col h-48 relative overflow-hidden"
+                        // CAMBIO CLAVE: Altura automática (h-full) para que se adapte al contenido
+                        className="bg-white rounded-xl shadow-sm border border-slate-100 active:scale-95 transition-transform text-left flex flex-col h-full relative overflow-hidden group hover:shadow-md"
                         >
-                        {/* IMAGEN DEL PRODUCTO */}
-                        <div className="h-20 w-full bg-slate-100 shrink-0 relative">
+                        {/* IMAGEN DEL PRODUCTO - ASPECTO CUADRADO PERFECTO */}
+                        <div className="aspect-square w-full bg-slate-100 shrink-0 relative">
                             {product.imageUrl ? (
                                 <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
                             ) : (
@@ -1150,7 +1151,7 @@ export default function PosApp() {
                         {/* INFO PRODUCTO */}
                         <div className="p-3 flex flex-col justify-between flex-1">
                             <span className="font-medium line-clamp-2 text-sm leading-tight text-slate-700">{product.name}</span>
-                            <div className="flex justify-between items-end mt-1">
+                            <div className="flex justify-between items-end mt-2">
                                 <div className="flex flex-col">
                                 <span className="text-[10px] text-slate-400 uppercase">Precio</span>
                                 <span className="font-bold text-blue-600 text-lg">${formatMoney(product.price)}</span>
@@ -1478,44 +1479,47 @@ export default function PosApp() {
             </div>
 
             <div className="space-y-3">
-              {filteredProducts.map(p => {
-                const status = getStockStatus(p.stock);
-                return (
-                    <div key={p.id} className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden h-48 flex flex-col">
-                        {/* IMAGEN EN INVENTARIO */}
-                        <div className="h-24 w-full bg-slate-100 relative shrink-0">
-                            {p.imageUrl ? (
-                                <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover" />
-                            ) : (
-                                <div className="w-full h-full flex items-center justify-center text-slate-300">
-                                    <Package className="w-8 h-8" />
-                                </div>
-                            )}
-                        </div>
+              {/* CAMBIO CLAVE: GRILLA RESPONSIVA UNIFICADA EN INVENTARIO TAMBIÉN */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                {filteredProducts.map(p => {
+                    const status = getStockStatus(p.stock);
+                    return (
+                        <div key={p.id} className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden h-full flex flex-col relative group hover:shadow-md">
+                            {/* IMAGEN EN INVENTARIO - ASPECT SQUARE */}
+                            <div className="aspect-square w-full bg-slate-100 relative shrink-0">
+                                {p.imageUrl ? (
+                                    <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover" />
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-slate-300">
+                                        <Package className="w-8 h-8" />
+                                    </div>
+                                )}
+                            </div>
 
-                        <div className="p-3 flex-1 flex flex-col justify-between">
-                            <div className="flex justify-between items-start">
-                                <div>
-                                    <h3 className="font-bold text-slate-800 line-clamp-1 text-sm">{p.name}</h3>
-                                    <div className="inline-flex items-center bg-slate-100 px-2 py-1 rounded-lg text-xs font-medium text-slate-600 mt-1">
-                                        Venta: <span className="text-slate-900 ml-1">${formatMoney(p.price)}</span>
+                            <div className="p-3 flex-1 flex flex-col justify-between">
+                                <div className="flex justify-between items-start">
+                                    <div className="w-full">
+                                        <h3 className="font-bold text-slate-800 line-clamp-2 text-sm leading-tight mb-1">{p.name}</h3>
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-xs text-slate-500 font-medium bg-slate-100 px-1.5 py-0.5 rounded">${formatMoney(p.price)}</span>
+                                            <div className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${status.color}`}>
+                                                {p.stock}
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="flex flex-col items-end gap-1">
-                                    <div className={`text-xs font-bold px-2 py-1 rounded-lg ${status.color}`}>
-                                        {p.stock} u.
-                                    </div>
+                                
+                                {/* BOTONES DE ACCIÓN (INVENTARIO) */}
+                                <div className="flex justify-between gap-2 mt-3 pt-2 border-t border-slate-50">
+                                    <button onClick={() => setHistoryProduct(p)} className="p-1.5 text-purple-600 bg-purple-50 rounded-lg hover:bg-purple-100 flex-1 flex justify-center" title="Historial"><History className="w-4 h-4" /></button>
+                                    <button onClick={() => { setEditingProduct(p); setProductPriceInput('$' + formatMoney(p.price)); setIsProductModalOpen(true); }} className="p-1.5 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 flex-1 flex justify-center" title="Editar"><Pencil className="w-4 h-4" /></button>
+                                    <button onClick={() => handleDeleteProduct(p.id)} className="p-1.5 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 flex-1 flex justify-center" title="Eliminar"><Trash2 className="w-4 h-4" /></button>
                                 </div>
-                            </div>
-                            <div className="flex justify-end gap-2 mt-2">
-                                <button onClick={() => setHistoryProduct(p)} className="p-1.5 text-purple-600 bg-purple-50 rounded-lg hover:bg-purple-100"><History className="w-4 h-4" /></button>
-                                <button onClick={() => { setEditingProduct(p); setProductPriceInput('$' + formatMoney(p.price)); setIsProductModalOpen(true); }} className="p-1.5 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100"><Users className="w-4 h-4" /></button>
-                                <button onClick={() => handleDeleteProduct(p.id)} className="p-1.5 text-red-600 bg-red-50 rounded-lg hover:bg-red-100"><Trash2 className="w-4 h-4" /></button>
                             </div>
                         </div>
-                    </div>
-                );
-              })}
+                    );
+                })}
+              </div>
               <div className="h-20"></div>
             </div>
           </div>
