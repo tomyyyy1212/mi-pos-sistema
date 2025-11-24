@@ -43,7 +43,9 @@ import {
   Pencil,
   RefreshCw,
   Image as ImageIcon, 
-  Upload
+  Upload,
+  CheckCircle2,
+  XCircle
 } from 'lucide-react';
 
 // Importamos las funciones de Firebase necesarias
@@ -219,6 +221,7 @@ export default function PosApp() {
 
   // --- NUEVOS ESTADOS ---
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('ALL');
+  const [stockFilter, setStockFilter] = useState<'ALL' | 'CRITICAL' | 'LOW' | 'GOOD'>('ALL'); // NUEVO FILTRO STOCK
   const [clientSearchTerm, setClientSearchTerm] = useState('');
   const [showClientOptions, setShowClientOptions] = useState(false);
   const clientInputRef = useRef<HTMLInputElement>(null);
@@ -608,9 +611,6 @@ export default function PosApp() {
       
       // SI ESTAMOS EDITANDO UNA COMPRA, PRIMERO ELIMINAMOS LA ANTERIOR
       if (editingTransactionId && type === 'purchase') {
-          // Usamos lógica similar a handleVoidTransaction pero interna
-          // Necesitamos obtener la transacción antigua primero para saber qué borrar
-          // Como React state 'transactions' tiene los datos, los buscamos ahí.
           const oldTrans = transactions.find(t => t.id === editingTransactionId);
           
           if (oldTrans) {
@@ -717,11 +717,6 @@ export default function PosApp() {
       }
 
       const transRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'transactions'));
-      
-      // Si estamos editando, podríamos querer mantener el ID o la fecha, 
-      // pero para simplificar y mantener consistencia de "nuevo evento", creamos uno nuevo con fecha actual.
-      // Opcional: Si quisieras mantener la fecha original, tendrías que pasarla. 
-      // Por ahora, al editar se asume que es una corrección "ahora".
       
       const transactionData: any = {
         type,
@@ -865,7 +860,13 @@ export default function PosApp() {
       
       const matchesCategory = selectedCategoryFilter === 'ALL' || p.category === selectedCategoryFilter;
 
-      return matchesSearch && matchesCategory;
+      // NUEVA LÓGICA DE FILTRO DE STOCK
+      let matchesStock = true;
+      if (stockFilter === 'CRITICAL') matchesStock = p.stock <= 1;
+      if (stockFilter === 'LOW') matchesStock = p.stock > 1 && p.stock < 4;
+      if (stockFilter === 'GOOD') matchesStock = p.stock >= 4;
+
+      return matchesSearch && matchesCategory && matchesStock;
   });
 
   const filteredClientsForSearch = clients.filter(c => {
@@ -1041,7 +1042,7 @@ export default function PosApp() {
           {view === 'receipts' && <Receipt className="w-5 h-5" />}
           {view === 'reports' && <LayoutDashboard className="w-5 h-5" />}
             
-          {view === 'pos' ? 'Punto de Venta' : 
+          {view === 'pos' ? 'Realizar Venta' : 
            view === 'inventory' ? 'Inventario' :
            view === 'clients' ? 'Clientes' :
            view === 'purchases' ? (showPurchaseHistory ? 'Historial Compras' : (editingTransactionId ? 'Editar Compra' : 'Abastecimiento')) :
@@ -1070,7 +1071,7 @@ export default function PosApp() {
                <div className={`px-4 py-2 border-b flex justify-between items-center shrink-0 ${editingTransactionId ? 'bg-amber-100 border-amber-200' : 'bg-emerald-50 border-emerald-100'}`}>
                  <div className={`text-xs flex items-center gap-2 ${editingTransactionId ? 'text-amber-800 font-bold' : 'text-emerald-700'}`}>
                     {editingTransactionId ? <Pencil className="w-4 h-4" /> : <Truck className="w-4 h-4" />}
-                    <span>{editingTransactionId ? 'MODO EDICIÓN: Corrige los datos.' : 'Registro de costos.'}</span>
+                    <span>{editingTransactionId ? 'MODO EDICIÓN: Corrige los datos.' : 'Registro de costos'}</span>
                  </div>
                  {editingTransactionId ? (
                      <button onClick={clearCart} className="text-xs font-bold text-amber-800 bg-white/50 px-2 py-1 rounded border border-amber-200">
@@ -1261,19 +1262,12 @@ export default function PosApp() {
                                             )}
                                         </div>
                                         
-                                        {/* Lista Sugerencias Cliente */}
+                                        {/* Lista Sugerencias Cliente - SIN CONSUMIDOR FINAL FORZADO */}
                                         {showClientOptions && (
                                             <div className="absolute bottom-full mb-1 left-0 w-full bg-white border border-slate-200 rounded-xl shadow-xl max-h-40 overflow-y-auto z-50">
-                                                <div 
-                                                    className="p-3 hover:bg-slate-50 cursor-pointer border-b border-slate-50 text-sm font-bold text-slate-800"
-                                                    onClick={() => {
-                                                        setSelectedClient('Consumidor Final');
-                                                        setClientSearchTerm('Consumidor Final');
-                                                        setShowClientOptions(false);
-                                                    }}
-                                                >
-                                                    Consumidor Final
-                                                </div>
+                                                {filteredClientsForSearch.length === 0 && (
+                                                    <div className="p-3 text-sm text-slate-400 italic text-center">No se encontraron clientes.</div>
+                                                )}
                                                 {filteredClientsForSearch.map(c => (
                                                     <div 
                                                         key={c.id}
@@ -1459,23 +1453,42 @@ export default function PosApp() {
                </button>
             </div>
 
-            {/* FILTRO DE CATEGORIAS (Botones horizontales) */}
-            <div className="flex gap-2 overflow-x-auto pb-2 mb-2 no-scrollbar">
-                <button 
-                    onClick={() => setSelectedCategoryFilter('ALL')}
-                    className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors border ${selectedCategoryFilter === 'ALL' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200'}`}
-                >
-                    Todos
-                </button>
-                {categories.map(c => (
+            {/* FILTRO DE CATEGORIAS Y STOCK (NUEVO DISEÑO) */}
+            <div className="flex gap-2 items-center mb-4">
+                {/* IZQUIERDA: CATEGORÍAS (SCROLL) */}
+                <div className="flex-1 overflow-x-auto flex gap-2 no-scrollbar">
                     <button 
-                        key={c.id}
-                        onClick={() => setSelectedCategoryFilter(c.id)}
-                        className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors border ${selectedCategoryFilter === c.id ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200'}`}
+                        onClick={() => setSelectedCategoryFilter('ALL')}
+                        className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors border ${selectedCategoryFilter === 'ALL' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200'}`}
                     >
-                        {c.name}
+                        Todos
                     </button>
-                ))}
+                    {categories.map(c => (
+                        <button 
+                            key={c.id}
+                            onClick={() => setSelectedCategoryFilter(c.id)}
+                            className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors border ${selectedCategoryFilter === c.id ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200'}`}
+                        >
+                            {c.name}
+                        </button>
+                    ))}
+                </div>
+                
+                {/* DERECHA: FILTROS STOCK (FIJOS) */}
+                <div className="shrink-0 flex gap-1 border-l border-slate-200 pl-2">
+                    <button onClick={() => setStockFilter('ALL')} className={`p-1.5 rounded-lg transition-colors ${stockFilter === 'ALL' ? 'bg-slate-200 text-slate-800' : 'text-slate-400 hover:bg-slate-50'}`} title="Todos">
+                        <Package className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => setStockFilter('GOOD')} className={`p-1.5 rounded-lg transition-colors ${stockFilter === 'GOOD' ? 'bg-green-100 text-green-700' : 'text-slate-400 hover:bg-green-50'}`} title="Stock Bien">
+                        <CheckCircle2 className="w-4 h-4" />
+                    </button>
+                     <button onClick={() => setStockFilter('LOW')} className={`p-1.5 rounded-lg transition-colors ${stockFilter === 'LOW' ? 'bg-yellow-100 text-yellow-700' : 'text-slate-400 hover:bg-yellow-50'}`} title="Stock Bajo">
+                        <AlertTriangle className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => setStockFilter('CRITICAL')} className={`p-1.5 rounded-lg transition-colors ${stockFilter === 'CRITICAL' ? 'bg-red-100 text-red-700' : 'text-slate-400 hover:bg-red-50'}`} title="Stock Crítico">
+                        <XCircle className="w-4 h-4" />
+                    </button>
+                </div>
             </div>
 
             <div className="space-y-3">
