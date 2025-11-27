@@ -1543,7 +1543,12 @@ export default function PosApp() {
                             </div>
                         </div>
                     );
-                })}                
+                })}
+              </div> {/* <--- FALTABA ESTE CIERRE (del Grid) */}
+                    <div className="h-20"></div>
+                  </div> {/* <--- FALTABA ESTE CIERRE (del space-y-3) */}
+                </div> {/* <--- FALTABA ESTE CIERRE (del p-4 overflow-y-auto) */}
+              )}
 
         {/* VISTA: RECIBOS */}
         {view === 'receipts' && (
@@ -2138,5 +2143,6 @@ function NavButton({ icon, label, active, onClick }: any) {
         </button>
     )
 }
+
 
 
