@@ -1927,12 +1927,16 @@ export default function PosApp() {
          </div>
       )}
 
-      {/* Modal Producto */}
+{/* Modal Producto */}
       {isProductModalOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-            <h2 className="text-xl font-bold mb-4 text-slate-800">{editingProduct ? 'Editar Producto' : 'Nuevo Producto'}</h2>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
+            <h2 className="text-xl font-bold mb-4 text-slate-800">
+              {editingProduct ? 'Editar Producto' : 'Nuevo Producto'}
+            </h2>
+            
             <form onSubmit={handleSaveProduct} className="space-y-4">
+              {/* SECCIÓN IMAGEN */}
               <div className="flex flex-col items-center mb-4">
                   <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center overflow-hidden border-2 border-slate-200 relative group cursor-pointer">
                       {editingProduct?.imageUrl ? (
@@ -1953,9 +1957,16 @@ export default function PosApp() {
                   <span className="text-xs text-slate-400 mt-2">Toca para cambiar imagen</span>
               </div>
 
-              <input name="name" required placeholder="Nombre" defaultValue={editingProduct?.name} className="w-full p-3 border border-slate-200 rounded-xl" />
+              {/* INPUT NOMBRE */}
+              <input 
+                name="name" 
+                required 
+                placeholder="Nombre" 
+                defaultValue={editingProduct?.name} 
+                className="w-full p-3 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" 
+              />
               
-              {/* INPUT PRECIO FORMATEADO */}
+              {/* INPUT PRECIO (Con lógica de formato) */}
               <input 
                 name="price" 
                 type="text" 
@@ -1963,27 +1974,57 @@ export default function PosApp() {
                 placeholder="Precio Venta" 
                 value={productPriceInput}
                 onChange={(e) => {
-                    // 1. Obtener solo números
                     const rawValue = e.target.value.replace(/\D/g, '');
-                    // 2. Si está vacío, limpiar estado
                     if (!rawValue) {
                         setProductPriceInput('');
                         return;
                     }
-                    // 3. Convertir a número y formatear
                     const numberValue = parseInt(rawValue, 10);
                     setProductPriceInput('$' + formatMoney(numberValue));
                 }}
-                className="w-full p-3 border border-slate-200 rounded-xl text-slate-700" 
+                className="w-full p-3 border border-slate-200 rounded-xl text-slate-700 outline-none focus:ring-2 focus:ring-blue-500" 
               />
 
-              <select name="category" defaultValue={editingProduct?.category} className="w-full p-3 border border-slate-200 rounded-xl bg-white">
+              {/* SELECT CATEGORÍA */}
+              <select 
+                name="category" 
+                defaultValue={editingProduct?.category} 
+                className="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none focus:ring-2 focus:ring-blue-500"
+                required
+              >
                     <option value="">Seleccionar Categoría</option>
                     {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
+
+              {/* BOTONES CON EL ARREGLO DE BLOQUEO */}
               <div className="flex gap-3 mt-6">
-                <button type="button" onClick={() => setIsProductModalOpen(false)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold">Cancelar</button>
-                <button type="submit" className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold">Guardar</button>
+                <button 
+                  type="button" 
+                  onClick={() => !loading && setIsProductModalOpen(false)} 
+                  disabled={loading}
+                  className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 hover:bg-slate-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Cancelar
+                </button>
+                
+                <button 
+                  type="submit" 
+                  disabled={loading} 
+                  className={`flex-1 py-3 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all ${
+                    loading 
+                      ? 'bg-slate-400 cursor-not-allowed' 
+                      : 'bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-200 active:scale-95'
+                  }`}
+                >
+                  {loading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span>Guardando...</span>
+                    </>
+                  ) : (
+                    'Guardar'
+                  )}
+                </button>
               </div>
             </form>
           </div>
@@ -2090,3 +2131,4 @@ function NavButton({ icon, label, active, onClick }: any) {
         </button>
     )
 }
+
