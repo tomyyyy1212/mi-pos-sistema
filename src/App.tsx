@@ -1133,9 +1133,9 @@ export default function PosApp() {
                             className="bg-white rounded-xl shadow-sm border border-slate-100 active:scale-95 transition-transform text-left flex flex-col h-full relative overflow-hidden group hover:shadow-md"
                         >
                             {/* IMAGEN: aspect-square y shrink-0 para que nunca se deforme ni encoja */}
-                            <div className="aspect-square w-full bg-slate-100 shrink-0 relative">
+                            <div className="aspect-square w-full bg-slate-100 shrink-0 relative overflow-hidden">
                                 {product.imageUrl ? (
-                                    <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
+                                    <img src={product.imageUrl} alt={product.name} className="absolute inset-0 w-full h-full object-cover" />
                                 ) : (
                                     <div className="w-full h-full flex items-center justify-center text-slate-300">
                                         <Package className="w-8 h-8" />
@@ -1506,9 +1506,9 @@ export default function PosApp() {
                     return (
                         <div key={p.id} className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden h-full flex flex-col relative group hover:shadow-md">
                             {/* IMAGEN EN INVENTARIO */}
-                            <div className="aspect-square w-full bg-slate-100 relative shrink-0">
+                            <div className="aspect-square w-full bg-slate-100 relative shrink-0 overflow-hidden">
                                 {p.imageUrl ? (
-                                    <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover" />
+                                    <img src={p.imageUrl} alt={p.name} className="absolute inset-0 w-full h-full object-cover" />
                                 ) : (
                                     <div className="w-full h-full flex items-center justify-center text-slate-300">
                                         <Package className="w-8 h-8" />
