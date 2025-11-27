@@ -1127,47 +1127,52 @@ export default function PosApp() {
                     const status = getStockStatus(product.stock);
                     return (
                         <button 
-                        key={product.id}
-                        onClick={() => addToCart(product)}
-                        // CAMBIO CLAVE: Altura automática (h-full) para que se adapte al contenido
-                        className="bg-white rounded-xl shadow-sm border border-slate-100 active:scale-95 transition-transform text-left flex flex-col h-full relative overflow-hidden group hover:shadow-md"
+                            key={product.id}
+                            onClick={() => addToCart(product)}
+                            // CLAVE: h-full para que ocupe todo el alto de la celda de la grilla
+                            className="bg-white rounded-xl shadow-sm border border-slate-100 active:scale-95 transition-transform text-left flex flex-col h-full relative overflow-hidden group hover:shadow-md"
                         >
-                        {/* IMAGEN DEL PRODUCTO - ASPECTO CUADRADO PERFECTO */}
-                        <div className="aspect-square w-full bg-slate-100 shrink-0 relative">
-                            {product.imageUrl ? (
-                                <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
-                            ) : (
-                                <div className="w-full h-full flex items-center justify-center text-slate-300">
-                                    <Package className="w-8 h-8" />
+                            {/* IMAGEN: aspect-square y shrink-0 para que nunca se deforme ni encoja */}
+                            <div className="aspect-square w-full bg-slate-100 shrink-0 relative">
+                                {product.imageUrl ? (
+                                    <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-slate-300">
+                                        <Package className="w-8 h-8" />
+                                    </div>
+                                )}
+                                {/* Badge de Stock encima de la imagen */}
+                                {product.stock <= 0 && view === 'pos' && (
+                                    <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-10 backdrop-blur-[1px]">
+                                        <span className="bg-red-100 text-red-700 text-xs font-bold px-2 py-1 rounded -rotate-12 border border-red-200">AGOTADO</span>
+                                    </div>
+                                )}
+                            </div>
+                
+                            {/* INFO PRODUCTO */}
+                            <div className="p-3 flex flex-col flex-1">
+                                {/* NOMBRE DEL PRODUCTO CON ALTURA FIJA (h-10 = espacio para 2 líneas) */}
+                                <div className="h-10 mb-1 w-full">
+                                    <span className="font-medium line-clamp-2 text-sm leading-tight text-slate-700 block">
+                                        {product.name}
+                                    </span>
                                 </div>
-                            )}
-                            {/* Badge de Stock encima de la imagen */}
-                            {product.stock <= 0 && view === 'pos' && (
-                                <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-10 backdrop-blur-[1px]">
-                                    <span className="bg-red-100 text-red-700 text-xs font-bold px-2 py-1 rounded -rotate-12 border border-red-200">AGOTADO</span>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* INFO PRODUCTO */}
-                        <div className="p-3 flex flex-col justify-between flex-1">
-                            <span className="font-medium line-clamp-2 text-sm leading-tight text-slate-700">{product.name}</span>
-                            <div className="flex justify-between items-end mt-2">
-                                <div className="flex flex-col">
-                                <span className="text-[10px] text-slate-400 uppercase">Precio</span>
-                                <span className="font-bold text-blue-600 text-lg">${formatMoney(product.price)}</span>
-                                </div>
-                                <div className={`text-[10px] px-2 py-1 rounded-lg font-bold flex flex-col items-center ${status.color}`}>
-                                    <span>{product.stock}</span>
-                                    <span className="text-[8px] font-normal">{status.label}</span>
+                
+                                {/* El margin-top-auto empuja esto siempre al final de la tarjeta */}
+                                <div className="flex justify-between items-end mt-auto pt-2">
+                                    <div className="flex flex-col">
+                                        <span className="text-[10px] text-slate-400 uppercase">Precio</span>
+                                        <span className="font-bold text-blue-600 text-lg">${formatMoney(product.price)}</span>
+                                    </div>
+                                    <div className={`text-[10px] px-2 py-1 rounded-lg font-bold flex flex-col items-center ${status.color}`}>
+                                        <span>{product.stock}</span>
+                                        <span className="text-[8px] font-normal">{status.label}</span>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
                         </button>
                     );
                 })}
-                </div>
-            </div>
 
             {/* 3. CARRITO (Modificado: FIXED position y Max Height en lista) */}
             {cart.length > 0 && (
@@ -1498,7 +1503,7 @@ export default function PosApp() {
                     const status = getStockStatus(p.stock);
                     return (
                         <div key={p.id} className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden h-full flex flex-col relative group hover:shadow-md">
-                            {/* IMAGEN EN INVENTARIO - ASPECT SQUARE */}
+                            {/* IMAGEN EN INVENTARIO */}
                             <div className="aspect-square w-full bg-slate-100 relative shrink-0">
                                 {p.imageUrl ? (
                                     <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover" />
@@ -1508,22 +1513,29 @@ export default function PosApp() {
                                     </div>
                                 )}
                             </div>
-
-                            <div className="p-3 flex-1 flex flex-col justify-between">
-                                <div className="flex justify-between items-start">
-                                    <div className="w-full">
-                                        <h3 className="font-bold text-slate-800 line-clamp-2 text-sm leading-tight mb-1">{p.name}</h3>
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-xs text-slate-500 font-medium bg-slate-100 px-1.5 py-0.5 rounded">${formatMoney(p.price)}</span>
-                                            <div className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${status.color}`}>
-                                                {p.stock}
-                                            </div>
-                                        </div>
+                
+                            {/* CUERPO DE LA TARJETA */}
+                            <div className="p-3 flex-1 flex flex-col">
+                                
+                                {/* NOMBRE CON ALTURA FIJA (h-10) */}
+                                <div className="h-10 mb-1 w-full">
+                                    <h3 className="font-bold text-slate-800 line-clamp-2 text-sm leading-tight">
+                                        {p.name}
+                                    </h3>
+                                </div>
+                
+                                {/* PRECIO Y STOCK */}
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="text-xs text-slate-500 font-medium bg-slate-100 px-1.5 py-0.5 rounded">
+                                        ${formatMoney(p.price)}
+                                    </span>
+                                    <div className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${status.color}`}>
+                                        {p.stock} u.
                                     </div>
                                 </div>
                                 
-                                {/* BOTONES DE ACCIÓN (INVENTARIO) */}
-                                <div className="flex justify-between gap-2 mt-3 pt-2 border-t border-slate-50">
+                                {/* BOTONES DE ACCIÓN (ALINEADOS AL FONDO AUTOMÁTICAMENTE) */}
+                                <div className="flex justify-between gap-2 mt-auto pt-2 border-t border-slate-50">
                                     <button onClick={() => setHistoryProduct(p)} className="p-1.5 text-purple-600 bg-purple-50 rounded-lg hover:bg-purple-100 flex-1 flex justify-center" title="Historial"><History className="w-4 h-4" /></button>
                                     <button onClick={() => { setEditingProduct(p); setProductPriceInput('$' + formatMoney(p.price)); setIsProductModalOpen(true); }} className="p-1.5 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 flex-1 flex justify-center" title="Editar"><Pencil className="w-4 h-4" /></button>
                                     <button onClick={() => handleDeleteProduct(p.id)} className="p-1.5 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 flex-1 flex justify-center" title="Eliminar"><Trash2 className="w-4 h-4" /></button>
@@ -1531,12 +1543,7 @@ export default function PosApp() {
                             </div>
                         </div>
                     );
-                })}
-              </div>
-              <div className="h-20"></div>
-            </div>
-          </div>
-        )}
+                })}                
 
         {/* VISTA: RECIBOS */}
         {view === 'receipts' && (
@@ -2131,4 +2138,5 @@ function NavButton({ icon, label, active, onClick }: any) {
         </button>
     )
 }
+
 
