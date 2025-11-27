@@ -30,21 +30,21 @@ import {
   Award, 
   PieChart, 
   Clock, 
-  AlertCircle,
-  Check,
-  FileText,
-  Share2,
-  MessageCircle,
-  Smartphone,
-  AlertTriangle,
-  BookOpen,
-  CreditCard,
-  Banknote,
-  Pencil,
-  RefreshCw,
+  AlertCircle, 
+  Check, 
+  FileText, 
+  Share2, 
+  MessageCircle, 
+  Smartphone, 
+  AlertTriangle, 
+  BookOpen, 
+  CreditCard, 
+  Banknote, 
+  Pencil, 
+  RefreshCw, 
   Image as ImageIcon, 
-  Upload,
-  CheckCircle2,
+  Upload, 
+  CheckCircle2, 
   XCircle
 } from 'lucide-react';
 
@@ -65,7 +65,7 @@ import {
   writeBatch, 
   getDocs, 
   where, 
-  limit,
+  limit, 
   increment
 } from 'firebase/firestore';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, signOut } from 'firebase/auth';
@@ -1056,7 +1056,7 @@ export default function PosApp() {
         
         {loading && processingMsg && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
-             <div className="bg-white p-4 rounded-lg shadow-xl font-bold flex items-center gap-3">
+              <div className="bg-white p-4 rounded-lg shadow-xl font-bold flex items-center gap-3">
               <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
               {processingMsg}
             </div>
@@ -1148,7 +1148,7 @@ export default function PosApp() {
                                     </div>
                                 )}
                             </div>
-                
+
                             {/* INFO PRODUCTO */}
                             <div className="p-3 flex flex-col flex-1">
                                 {/* NOMBRE DEL PRODUCTO CON ALTURA FIJA (h-10 = espacio para 2 líneas) */}
@@ -1157,7 +1157,7 @@ export default function PosApp() {
                                         {product.name}
                                     </span>
                                 </div>
-                
+
                                 {/* El margin-top-auto empuja esto siempre al final de la tarjeta */}
                                 <div className="flex justify-between items-end mt-auto pt-2">
                                     <div className="flex flex-col">
@@ -1173,6 +1173,8 @@ export default function PosApp() {
                         </button>
                     );
                 })}
+                </div>
+            </div>
 
             {/* 3. CARRITO (Modificado: FIXED position y Max Height en lista) */}
             {cart.length > 0 && (
@@ -1363,10 +1365,10 @@ export default function PosApp() {
                 {/* HEADER HISTORIAL */}
                 <div className="p-4 shrink-0 flex justify-between items-center bg-white border-b border-slate-100 shadow-sm z-10">
                       <button onClick={() => setShowPurchaseHistory(false)} className="text-emerald-600 flex items-center gap-1 font-medium text-sm">
-                         <ChevronLeft className="w-4 h-4" /> Volver
+                          <ChevronLeft className="w-4 h-4" /> Volver
                       </button>
                       <button onClick={() => setShowPhFilters(!showPhFilters)} className={`p-2 rounded-lg ${showPhFilters ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                         <Filter className="w-5 h-5" />
+                          <Filter className="w-5 h-5" />
                       </button>
                 </div>
 
@@ -1487,7 +1489,7 @@ export default function PosApp() {
                     <button onClick={() => setStockFilter('GOOD')} className={`p-1.5 rounded-lg transition-colors ${stockFilter === 'GOOD' ? 'bg-green-100 text-green-700' : 'text-slate-400 hover:bg-green-50'}`} title="Stock Bien">
                         <CheckCircle2 className="w-4 h-4" />
                     </button>
-                     <button onClick={() => setStockFilter('LOW')} className={`p-1.5 rounded-lg transition-colors ${stockFilter === 'LOW' ? 'bg-yellow-100 text-yellow-700' : 'text-slate-400 hover:bg-yellow-50'}`} title="Stock Bajo">
+                      <button onClick={() => setStockFilter('LOW')} className={`p-1.5 rounded-lg transition-colors ${stockFilter === 'LOW' ? 'bg-yellow-100 text-yellow-700' : 'text-slate-400 hover:bg-yellow-50'}`} title="Stock Bajo">
                         <AlertTriangle className="w-4 h-4" />
                     </button>
                     <button onClick={() => setStockFilter('CRITICAL')} className={`p-1.5 rounded-lg transition-colors ${stockFilter === 'CRITICAL' ? 'bg-red-100 text-red-700' : 'text-slate-400 hover:bg-red-50'}`} title="Stock Crítico">
@@ -1544,11 +1546,11 @@ export default function PosApp() {
                         </div>
                     );
                 })}
-              </div> {/* <--- FALTABA ESTE CIERRE (del Grid) */}
-                    <div className="h-20"></div>
-                  </div> {/* <--- FALTABA ESTE CIERRE (del space-y-3) */}
-                </div> {/* <--- FALTABA ESTE CIERRE (del p-4 overflow-y-auto) */}
-              )}
+              </div>
+              <div className="h-20"></div>
+            </div>
+          </div>
+        )}
 
         {/* VISTA: RECIBOS */}
         {view === 'receipts' && (
@@ -1939,7 +1941,7 @@ export default function PosApp() {
          </div>
       )}
 
-{/* Modal Producto */}
+      {/* Modal Producto */}
       {isProductModalOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
@@ -2143,6 +2145,3 @@ function NavButton({ icon, label, active, onClick }: any) {
         </button>
     )
 }
-
-
-
