@@ -1880,7 +1880,7 @@ export default function PosApp() {
                          )}
                      </div>
                      <div className="bg-slate-50 p-3 rounded-xl text-sm text-slate-600 max-h-40 overflow-y-auto">
-                         <div className="font-bold mb-2">Este es el detalle veci:</div>
+                         <div className="font-bold mb-2">Este es el detalle:</div>
                          <ul className="pl-2 space-y-1">
                              {currentCart.map(item => (
                                  <li key={item.id}>
@@ -2192,5 +2192,6 @@ function NavButton({ icon, label, active, onClick }: any) {
         </button>
     )
 }
+
 
 
