@@ -605,7 +605,7 @@ export default function PosApp() {
 
       // CAMBIO: Formato "Este es el detalle veci" y "cantidad producto total linea"
       const lines = currentCart.map(item => 
-          `${item.qty} ${item.name} $${formatMoney(item.qty * item.transactionPrice)}`
+          `- ${item.qty} ${item.name} $${formatMoney(item.qty * item.transactionPrice)}`
       );
       
       const message = `Este es el detalle:\n\n${lines.join('\n')}\n\n*TOTAL: $${formatMoney(cartTotal)}*`;
@@ -2192,4 +2192,5 @@ function NavButton({ icon, label, active, onClick }: any) {
         </button>
     )
 }
+
 
