@@ -608,7 +608,7 @@ export default function PosApp() {
           `${item.qty} ${item.name} $${formatMoney(item.qty * item.transactionPrice)}`
       );
       
-      const message = `Este es el detalle veci:\n\n${lines.join('\n')}\n\n*TOTAL: $${formatMoney(cartTotal)}*`;
+      const message = `Este es el detalle:\n\n${lines.join('\n')}\n\n*TOTAL: $${formatMoney(cartTotal)}*`;
        
       const encoded = encodeURIComponent(message);
       const url = `https://wa.me/${clientPhone}?text=${encoded}`;
@@ -2192,3 +2192,4 @@ function NavButton({ icon, label, active, onClick }: any) {
         </button>
     )
 }
+
