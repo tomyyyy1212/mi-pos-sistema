@@ -164,7 +164,7 @@ export default function PosApp() {
       maximumFractionDigits: 0  
     });
   };
-  
+   
   const [user, setUser] = useState<any>(null);
   const [view, setView] = useState<'pos' | 'inventory' | 'clients' | 'reports' | 'purchases' | 'receipts'>('reports');
     
@@ -175,8 +175,13 @@ export default function PosApp() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
     
-  // Cart & UI State
-  const [cart, setCart] = useState<CartItem[]>([]);
+  // --- CAMBIO 1: SEPARACIÓN DE ESTADOS DE CARRITO ---
+  const [salesCart, setSalesCart] = useState<CartItem[]>([]);
+  const [purchaseCart, setPurchaseCart] = useState<CartItem[]>([]);
+
+  // Computed: Carrito Actual basado en la vista
+  const currentCart = view === 'purchases' ? purchaseCart : salesCart;
+
   const [selectedClient, setSelectedClient] = useState<string>('');
   const [selectedSupplier, setSelectedSupplier] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<'Efectivo' | 'Transferencia' | ''>(''); 
@@ -315,9 +320,9 @@ export default function PosApp() {
           triggerAlert("Falta número", "Ingresa un número de teléfono primero.");
           return;
       }
-      
+       
       const lowStockItems = products.filter(p => p.stock < 4);
-      
+       
       if (lowStockItems.length === 0) {
           triggerAlert("Todo bien", "No hay productos con stock crítico o bajo.");
           return;
@@ -369,7 +374,7 @@ export default function PosApp() {
       itemsToSend.forEach(p => {
           message += `* ${p.name} - $${formatMoney(p.price)}\n`;
       });
-      
+       
       // Abrir WhatsApp sin número predefinido para que el usuario elija el contacto
       const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
       window.open(url, '_blank');
@@ -475,8 +480,8 @@ export default function PosApp() {
   const handleEditPurchase = (transaction: Transaction) => {
       if (transaction.type !== 'purchase') return;
       
-      // 1. Cargar items al carrito
-      setCart(transaction.items);
+      // 1. Cargar items al carrito DE COMPRAS
+      setPurchaseCart(transaction.items);
       // 2. Cargar proveedor
       if(transaction.clientId) setSelectedSupplier(transaction.clientId);
       // 3. Cambiar vista
@@ -489,68 +494,103 @@ export default function PosApp() {
   };
 
 
-  // --- Lógica del Carrito ---
+  // --- Lógica del Carrito (ACTUALIZADA PARA SEPARAR VENTAS/COMPRAS) ---
   const addToCart = (product: Product) => {
+    // Definimos qué carrito actualizar según la vista
     if (view === 'pos') {
-        const existingItem = cart.find(p => p.id === product.id);
+        const existingItem = salesCart.find(p => p.id === product.id);
         const currentQtyInCart = existingItem ? existingItem.qty : 0;
+        
+        // Validación Stock solo en Ventas
         if (currentQtyInCart + 1 > product.stock) {
             triggerAlert("Stock Insuficiente", `Solo quedan ${product.stock} unidades disponibles de ${product.name}.`);
             return;
         }
+
+        setSalesCart(prev => {
+            const existing = prev.find(p => p.id === product.id);
+            if (existing) {
+              return prev.map(p => p.id === product.id ? { ...p, qty: p.qty + 1 } : p);
+            }
+            return [...prev, { ...product, transactionPrice: product.price, qty: 1 }];
+        });
+
+    } else if (view === 'purchases') {
+        setPurchaseCart(prev => {
+            const existing = prev.find(p => p.id === product.id);
+            if (existing) {
+              return prev.map(p => p.id === product.id ? { ...p, qty: p.qty + 1 } : p);
+            }
+            return [...prev, { ...product, transactionPrice: 0, qty: 1 }]; // Precio 0 inicial para compra
+        });
     }
-    setCart(prev => {
-      const existing = prev.find(p => p.id === product.id);
-      if (existing) {
-        return prev.map(p => p.id === product.id ? { ...p, qty: p.qty + 1 } : p);
-      }
-      const initialPrice = view === 'purchases' ? 0 : product.price;
-      return [...prev, { ...product, transactionPrice: initialPrice, qty: 1 }];
-    });
   };
 
   const removeFromCart = (productId: string) => {
-    setCart(prev => prev.filter(p => p.id !== productId));
+    if (view === 'pos') {
+        setSalesCart(prev => prev.filter(p => p.id !== productId));
+    } else {
+        setPurchaseCart(prev => prev.filter(p => p.id !== productId));
+    }
   };
 
   const updateQty = (productId: string, delta: number) => {
-    setCart(prev => prev.map(p => {
-      if (p.id === productId) {
-        const newQty = Math.max(1, p.qty + delta);
-        if (view === 'pos' && delta > 0) {
-             const product = products.find(prod => prod.id === productId);
-             if (product && newQty > product.stock) {
-                 triggerAlert("Límite de Stock", `No puedes agregar más unidades. Stock máximo: ${product.stock}`);
-                 return p;
-             }
+    // Función genérica para actualizar state
+    const updateLogic = (prev: CartItem[]) => prev.map(p => {
+        if (p.id === productId) {
+          const newQty = Math.max(1, p.qty + delta);
+          // Validación Stock solo en Ventas y si sumamos
+          if (view === 'pos' && delta > 0) {
+               const product = products.find(prod => prod.id === productId);
+               if (product && newQty > product.stock) {
+                   triggerAlert("Límite de Stock", `No puedes agregar más unidades. Stock máximo: ${product.stock}`);
+                   return p;
+               }
+          }
+          return { ...p, qty: newQty };
         }
-        return { ...p, qty: newQty };
-      }
-      return p;
-    }));
+        return p;
+      });
+
+    if (view === 'pos') {
+        setSalesCart(updateLogic);
+    } else {
+        setPurchaseCart(updateLogic);
+    }
   };
 
   const updateTransactionPrice = (productId: string, newPrice: number) => {
-    setCart(prev => prev.map(p => {
+    // Esto se usa principalmente en compras para definir costo
+    const updateLogic = (prev: CartItem[]) => prev.map(p => {
       if (p.id === productId) return { ...p, transactionPrice: newPrice };
       return p;
-    }));
+    });
+
+    if (view === 'pos') {
+        setSalesCart(updateLogic);
+    } else {
+        setPurchaseCart(updateLogic);
+    }
   };
 
   const clearCart = () => {
-    setCart([]);
-    setSelectedClient('');
-    setClientSearchTerm(''); 
-    setSelectedSupplier('');
-    setPaymentMethod(''); 
-    setEditingTransactionId(null); // Limpiar modo edición si se cancela/vacía
+    if (view === 'pos') {
+        setSalesCart([]);
+        setSelectedClient('');
+        setClientSearchTerm(''); 
+        setPaymentMethod(''); 
+    } else {
+        setPurchaseCart([]);
+        setSelectedSupplier('');
+        setEditingTransactionId(null);
+    }
   };
 
   const cartTotal = useMemo(() => {
-    return cart.reduce((acc, item) => acc + (item.transactionPrice * item.qty), 0);
-  }, [cart]);
+    return currentCart.reduce((acc, item) => acc + (item.transactionPrice * item.qty), 0);
+  }, [currentCart]);
 
-  // --- WhatsApp Helpers (Venta) ---
+  // --- WhatsApp Helpers (Venta) ACTUALIZADO ---
   const handleWhatsAppShare = () => {
       let clientPhone = '';
       let clientName = 'Vecin@';
@@ -563,9 +603,13 @@ export default function PosApp() {
           }
       }
 
-      const lines = cart.map(item => `- ${item.name} (${item.qty} x $${formatMoney(item.transactionPrice)}) = $${formatMoney(item.qty * item.transactionPrice)}`);
-      const message = `aquí está el resumen de tu pedido:\n\n${lines.join('\n')}\n\n*TOTAL: $${formatMoney(cartTotal)}*`;
+      // CAMBIO: Formato "Este es el detalle veci" y "cantidad producto total linea"
+      const lines = currentCart.map(item => 
+          `${item.qty} ${item.name} $${formatMoney(item.qty * item.transactionPrice)}`
+      );
       
+      const message = `Este es el detalle veci:\n\n${lines.join('\n')}\n\n*TOTAL: $${formatMoney(cartTotal)}*`;
+       
       const encoded = encodeURIComponent(message);
       const url = `https://wa.me/${clientPhone}?text=${encoded}`;
       window.open(url, '_blank');
@@ -574,7 +618,7 @@ export default function PosApp() {
 
   // --- LÓGICA CORE: Transacciones ---
   const handleTransaction = async () => {
-    if (cart.length === 0) {
+    if (currentCart.length === 0) {
         triggerAlert("Carrito Vacío", "Agrega productos antes de continuar.");
         return;
     }
@@ -597,7 +641,7 @@ export default function PosApp() {
             triggerAlert("Falta Proveedor", "Debes seleccionar un proveedor para registrar el abastecimiento.");
             return;
         }
-        const invalidItems = cart.filter(item => item.transactionPrice <= 0);
+        const invalidItems = currentCart.filter(item => item.transactionPrice <= 0);
         if (invalidItems.length > 0) {
             triggerAlert("Costo Inválido", `El costo de abastecimiento no puede ser 0. Revisa: ${invalidItems.map(i => i.name).join(', ')}.`);
             return;
@@ -650,7 +694,8 @@ export default function PosApp() {
       let totalTransactionCost = 0; 
       const finalCartItems: CartItem[] = []; 
 
-      for (const item of cart) {
+      // Usamos currentCart aquí
+      for (const item of currentCart) {
         const productRef = doc(db, 'artifacts', appId, 'public', 'data', 'products', item.id);
           
         if (type === 'purchase') {
@@ -692,7 +737,6 @@ export default function PosApp() {
             const costForThisPart = take * invBatch.cost;
               
             itemTotalCost += costForThisPart;
-            // NOTA: Aquí ya no está la línea duplicada :)
               
             currentItemFifoDetails.push({
                 cost: invBatch.cost,
@@ -853,7 +897,7 @@ export default function PosApp() {
   };
 
   // --- Filtros y Utiles ---
-  
+   
   const filteredProducts = products.filter(p => {
       const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                             p.category.toLowerCase().includes(searchTerm.toLowerCase());
@@ -1177,7 +1221,7 @@ export default function PosApp() {
             </div>
 
             {/* 3. CARRITO (Modificado: FIXED position y Max Height en lista) */}
-            {cart.length > 0 && (
+            {currentCart.length > 0 && (
               <div className="fixed bottom-[76px] left-0 w-full z-20 flex flex-col shadow-[0_-8px_30px_rgba(0,0,0,0.15)] animate-in slide-in-from-bottom duration-300">
                   {/* Se usa bottom-[76px] aprox para que quede justo encima del menú inferior */}
                   
@@ -1194,7 +1238,7 @@ export default function PosApp() {
                         </button>
                       </div>
                         
-                      {cart.map(item => (
+                      {currentCart.map(item => (
                         <div key={item.id} className="flex flex-col mb-3 pb-3 border-b border-slate-50 last:border-0 last:pb-0 last:mb-0">
                             
                             {/* CABECERA ITEM: NOMBRE + ELIMINAR */}
@@ -1522,17 +1566,17 @@ export default function PosApp() {
                                 {/* NOMBRE CON ALTURA FIJA (h-10) */}
                                 <div className="h-10 mb-1 w-full">
                                     <h3 className="font-bold text-slate-800 line-clamp-2 text-sm leading-tight">
-                                        {p.name}
+                                            {p.name}
                                     </h3>
                                 </div>
                 
                                 {/* PRECIO Y STOCK */}
                                 <div className="flex justify-between items-center mb-2">
                                     <span className="text-xs text-slate-500 font-medium bg-slate-100 px-1.5 py-0.5 rounded">
-                                        ${formatMoney(p.price)}
+                                            ${formatMoney(p.price)}
                                     </span>
                                     <div className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${status.color}`}>
-                                        {p.stock} u.
+                                            {p.stock} u.
                                     </div>
                                 </div>
                                 
@@ -1816,7 +1860,7 @@ export default function PosApp() {
         </div>
       )}
 
-      {/* Modal Pre-Ticket (Resumen WhatsApp) */}
+      {/* Modal Pre-Ticket (Resumen WhatsApp) ACTUALIZADO */}
       {showPreTicket && (
          <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm">
              <div className="bg-white w-full max-w-sm h-auto sm:rounded-2xl rounded-t-3xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300">
@@ -1836,9 +1880,12 @@ export default function PosApp() {
                          )}
                      </div>
                      <div className="bg-slate-50 p-3 rounded-xl text-sm text-slate-600 max-h-40 overflow-y-auto">
-                         <ul className="list-disc pl-4 space-y-1">
-                             {cart.map(item => (
-                                 <li key={item.id}>{item.name} (x{item.qty})</li>
+                         <div className="font-bold mb-2">Este es el detalle veci:</div>
+                         <ul className="pl-2 space-y-1">
+                             {currentCart.map(item => (
+                                 <li key={item.id}>
+                                     {item.qty} {item.name} ${formatMoney(item.qty * item.transactionPrice)}
+                                 </li>
                              ))}
                          </ul>
                      </div>
